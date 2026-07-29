@@ -3,6 +3,7 @@ using System;
 using LeaveManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LeaveManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260729132535_AddLeaveAllocationsTable")]
+    partial class AddLeaveAllocationsTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.9");
@@ -53,14 +56,11 @@ namespace LeaveManagement.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<bool?>("Approved")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("Cancelled")
-                        .HasColumnType("INTEGER");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("DurationInDays")
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("TEXT");
@@ -68,22 +68,13 @@ namespace LeaveManagement.Infrastructure.Migrations
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("ManagerComments")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("NumberOfDays")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RequestComments")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("StartDate")
@@ -92,11 +83,12 @@ namespace LeaveManagement.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EmployeeId");
-
-                    b.HasIndex("LeaveTypeId");
 
                     b.ToTable("LeaveRequests", (string)null);
                 });
@@ -200,15 +192,7 @@ namespace LeaveManagement.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LeaveManagement.Domain.Entities.LeaveType", "LeaveType")
-                        .WithMany()
-                        .HasForeignKey("LeaveTypeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("Employee");
-
-                    b.Navigation("LeaveType");
                 });
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.User", b =>
