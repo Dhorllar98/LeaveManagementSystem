@@ -1,12 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace LeaveManagement.Application.Common.Models;
 
-namespace LeaveManagement.Application.Common.Models
+public class JwtSettings // <-- Ensure this is 'public'
 {
-    internal class JwtSettings
-    {
-    }
+    public string Issuer { get; set; } = string.Empty;
+    public string Audience { get; set; } = string.Empty;
+    public string Secret { get; set; } = string.Empty;
+    public int AccessTokenExpirationMinutes { get; set; }
+    public int RefreshTokenExpirationDays { get; set; }
 }
