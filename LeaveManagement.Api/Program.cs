@@ -1,50 +1,41 @@
-using System.Text;
-using FluentValidation;
+using LeaveManagement.Api.Extensions;
 using LeaveManagement.Api.Middleware;
-using LeaveManagement.Application.DTOs.Auth;
+using LeaveManagement.Application.Common.Models;
 using LeaveManagement.Application.Interfaces;
-using LeaveManagement.Application.Services;
-using LeaveManagement.Application.Validators;
 using LeaveManagement.Infrastructure;
 using LeaveManagement.Infrastructure.Authentication;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Presentation: Controllers & Swagger
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// 1. Presentation & API Services
+builder.Services.AddPresentationServices(builder.Configuration);
 
-// Application: Services & Explicit Validators
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IValidator<RegisterRequestDto>, RegisterRequestValidator>();
-builder.Services.AddScoped<IValidator<LoginRequestDto>, LoginRequestValidator>();
+// 2. Application Layer Services & Validators
+builder.Services.AddApplicationServices();
 
-// Infrastructure: Data & Auth
+// 3. Infrastructure Layer (Data, Repositories, etc.)
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
-// JWT Bearer Configuration
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtSettings["Issuer"],
-            ValidAudience = jwtSettings["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Secret"]!)),
-            ClockSkew = TimeSpan.Zero
-        };
-    });
+// 4. JWT Authentication & Options Binding
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+builder.Services.AddJwtAuthentication(builder.Configuration);
 
-builder.Services.AddAuthorization();
+// 5. Rate Limiting Configuration
+builder.Services.AddRateLimiter(options =>
+{
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 20, 
+                QueueLimit = 2,
+                Window = TimeSpan.FromSeconds(10)
+            }));
+});
 
 var app = builder.Build();
 
@@ -57,7 +48,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseRateLimiter(); 
+
 app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
+
 app.Run();
