@@ -1,8 +1,8 @@
-﻿namespace LeaveManagement.Domain.Enums
+﻿namespace LeaveManagement.Domain.Enums;
+
+public enum UserRole
 {
-    public enum UserRole
-    {
-        Employee = 1 ,
-        Manager = 2 
-    }
+    Employee = 1,
+    Manager = 2,
+    Admin = 3
 }

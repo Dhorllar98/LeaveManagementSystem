@@ -1,4 +1,5 @@
-﻿using LeaveManagement.Domain.Interfaces;
+﻿using LeaveManagement.Application.Interfaces;
+using LeaveManagement.Domain.Interfaces;
 using LeaveManagement.Infrastructure.Data;
 using LeaveManagement.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ILeaveRepository, LeaveRepository>();
+        services.AddScoped<ILeaveTypeRepository, LeaveTypeRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         return services;

@@ -3,6 +3,7 @@ using System;
 using LeaveManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LeaveManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260729112848_AddLeaveTypesAndAllocations")]
+    partial class AddLeaveTypesAndAllocations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.9");
@@ -30,9 +33,6 @@ namespace LeaveManagement.Infrastructure.Migrations
                     b.Property<int>("LeaveTypeId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid?>("LeaveTypeId1")
-                        .HasColumnType("TEXT");
-
                     b.Property<int>("NumberOfDays")
                         .HasColumnType("INTEGER");
 
@@ -41,7 +41,7 @@ namespace LeaveManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LeaveTypeId1");
+                    b.HasIndex("LeaveTypeId");
 
                     b.ToTable("LeaveAllocations");
                 });
@@ -91,21 +91,15 @@ namespace LeaveManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.LeaveType", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("DefaultDays")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -165,7 +159,9 @@ namespace LeaveManagement.Infrastructure.Migrations
                 {
                     b.HasOne("LeaveManagement.Domain.Entities.LeaveType", "LeaveType")
                         .WithMany()
-                        .HasForeignKey("LeaveTypeId1");
+                        .HasForeignKey("LeaveTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("LeaveType");
                 });
