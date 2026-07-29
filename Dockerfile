@@ -7,7 +7,7 @@ COPY ["LeaveManagementSystem.sln", "./"]
 COPY ["LeaveManagement.Domain/LeaveManagement.Domain.csproj", "LeaveManagement.Domain/"]
 COPY ["LeaveManagement.Application/LeaveManagement.Application.csproj", "LeaveManagement.Application/"]
 COPY ["LeaveManagement.Infrastructure/LeaveManagement.Infrastructure.csproj", "LeaveManagement.Infrastructure/"]
-COPY ["LeaveManagement.Api/LeaveManagement.Api.csproj", "LeaveManagement.Api/"]
+COPY ["LeaveManagement.Api./LeaveManagement.Api..csproj", "LeaveManagement.Api./"]
 
 RUN dotnet restore
 
