@@ -6,10 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LeaveManagement.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")]
 [Authorize]
-public class LeaveTypesController : ControllerBase
+public class LeaveTypesController : BaseController
 {
     private readonly ILeaveTypeRepository _repository;
     private readonly IUnitOfWork _unitOfWork;
@@ -49,7 +47,7 @@ public class LeaveTypesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Manager")] // Accepts either Admin or Manager
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<LeaveTypeDto>> CreateLeaveType(CreateLeaveTypeDto dto, CancellationToken cancellationToken)
     {
         var leaveType = new LeaveType
