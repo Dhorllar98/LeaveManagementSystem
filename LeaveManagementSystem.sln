@@ -9,7 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeaveManagement.Application
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeaveManagement.Infrastructure", "LeaveManagement.Infrastructure\LeaveManagement.Infrastructure.csproj", "{6FACD2B1-0AA6-4F93-9AD2-FB410195E5F9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeaveManagement.Api.", "LeaveManagement.Api\LeaveManagement.Api..csproj", "{71547772-A5D3-44E3-82CA-EEBE4A764AE0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeaveManagement.Api.", "LeaveManagement.Api\LeaveManagement.Api.csproj", "{71547772-A5D3-44E3-82CA-EEBE4A764AE0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
