@@ -3,21 +3,25 @@ using LeaveManagement.Application.DTOs.Auth;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Application.Services;
 using LeaveManagement.Application.Validators;
-using LeaveManagement.Domain.Interfaces;
-using LeaveManagement.Infrastructure;
 using LeaveManagement.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace LeaveManagement.Api.Extensions;
 
-public static class ServiceExtensions // <-- Must be 'public static'
+public static class ServiceExtensions
 {
     public static IServiceCollection AddPresentationServices(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddControllers();
+        services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            });
+
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen(c =>
         {
@@ -55,7 +59,14 @@ public static class ServiceExtensions // <-- Must be 'public static'
     public static IServiceCollection AddJwtAuthentication(this IServiceCollection services, IConfiguration configuration)
     {
         var jwtSettings = configuration.GetSection("JwtSettings");
-        var secret = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT Secret not configured.");
+        var secret = jwtSettings["Secret"];
+
+        // Defensive check: fail fast if the key wasn't injected via User Secrets or Environment Variables
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            throw new InvalidOperationException(
+                "JWT Secret is missing! Ensure 'JwtSettings:Secret' is set in User Secrets (Development) or Environment Variables (Production).");
+        }
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -66,8 +77,8 @@ public static class ServiceExtensions // <-- Must be 'public static'
                     ValidateAudience = true,
                     ValidateLifetime = true,
                     ValidateIssuerSigningKey = true,
-                    ValidIssuer = jwtSettings["Issuer"],
-                    ValidAudience = jwtSettings["Audience"],
+                    ValidIssuer = jwtSettings["Issuer"] ?? "LeaveManagementApi",
+                    ValidAudience = jwtSettings["Audience"] ?? "LeaveManagementClient",
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
                     ClockSkew = TimeSpan.Zero
                 };
