@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace LeaveManagement.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class PostgresInitial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -15,11 +15,11 @@ namespace LeaveManagement.Infrastructure.Migrations
                 name: "LeaveTypes",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", nullable: false),
-                    DefaultDays = table.Column<int>(type: "INTEGER", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: true)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    DefaultDays = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -30,16 +30,16 @@ namespace LeaveManagement.Infrastructure.Migrations
                 name: "Users",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    FullName = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
-                    Email = table.Column<string>(type: "TEXT", maxLength: 150, nullable: false),
-                    PasswordHash = table.Column<string>(type: "TEXT", nullable: false),
-                    Role = table.Column<int>(type: "INTEGER", nullable: false),
-                    LeaveBalance = table.Column<int>(type: "INTEGER", nullable: false, defaultValue: 20),
-                    RefreshToken = table.Column<string>(type: "TEXT", nullable: true),
-                    RefreshTokenExpiryTime = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: true)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    FullName = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Email = table.Column<string>(type: "character varying(150)", maxLength: 150, nullable: false),
+                    PasswordHash = table.Column<string>(type: "text", nullable: false),
+                    Role = table.Column<int>(type: "integer", nullable: false),
+                    LeaveBalance = table.Column<int>(type: "integer", nullable: false, defaultValue: 20),
+                    RefreshToken = table.Column<string>(type: "text", nullable: true),
+                    RefreshTokenExpiryTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -50,12 +50,12 @@ namespace LeaveManagement.Infrastructure.Migrations
                 name: "LeaveAllocations",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    NumberOfDays = table.Column<int>(type: "INTEGER", nullable: false),
-                    LeaveTypeId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    EmployeeId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Period = table.Column<int>(type: "INTEGER", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    NumberOfDays = table.Column<int>(type: "integer", nullable: false),
+                    LeaveTypeId = table.Column<Guid>(type: "uuid", nullable: false),
+                    EmployeeId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Period = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -78,19 +78,19 @@ namespace LeaveManagement.Infrastructure.Migrations
                 name: "LeaveRequests",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    StartDate = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    EndDate = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    LeaveTypeId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    EmployeeId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    NumberOfDays = table.Column<int>(type: "INTEGER", nullable: false),
-                    Approved = table.Column<bool>(type: "INTEGER", nullable: true),
-                    Status = table.Column<int>(type: "INTEGER", nullable: false),
-                    Cancelled = table.Column<bool>(type: "INTEGER", nullable: false),
-                    RequestComments = table.Column<string>(type: "TEXT", nullable: true),
-                    Reason = table.Column<string>(type: "TEXT", maxLength: 500, nullable: false),
-                    ManagerComments = table.Column<string>(type: "TEXT", maxLength: 500, nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    StartDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    EndDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    LeaveTypeId = table.Column<Guid>(type: "uuid", nullable: false),
+                    EmployeeId = table.Column<Guid>(type: "uuid", nullable: false),
+                    NumberOfDays = table.Column<int>(type: "integer", nullable: false),
+                    Approved = table.Column<bool>(type: "boolean", nullable: true),
+                    Status = table.Column<int>(type: "integer", nullable: false),
+                    Cancelled = table.Column<bool>(type: "boolean", nullable: false),
+                    RequestComments = table.Column<string>(type: "text", nullable: true),
+                    Reason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    ManagerComments = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {

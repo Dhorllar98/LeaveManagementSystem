@@ -4,6 +4,7 @@ using LeaveManagement.Application.Common.Models;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Infrastructure;
 using LeaveManagement.Infrastructure.Authentication;
+using LeaveManagement.Infrastructure.Data;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,21 +38,19 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
-
+// 6. CORS Configuration
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.SetIsOriginAllowed(origin => true) 
+        policy.SetIsOriginAllowed(origin => true)
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials(); 
+              .AllowCredentials();
     });
 });
 
-
 var app = builder.Build();
-
 
 app.UseCors("AllowAll");
 
@@ -72,5 +71,21 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<AppDbContext>();
+        await DbInitializer.SeedAsync(context);
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred while migrating or seeding the database.");
+    }
+}
 
 app.Run();
