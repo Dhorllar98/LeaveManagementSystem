@@ -1,4 +1,4 @@
-﻿using LeaveManagement.Application.DTOs.LeaveRequest;
+﻿using LeaveManagement.Application.DTOs.Leave;
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
@@ -10,114 +10,182 @@ namespace LeaveManagement.Api.Controllers;
 [Authorize]
 public class LeaveRequestsController : BaseController
 {
-    private readonly ILeaveRequestRepository _leaveRequestRepository;
+    private readonly ILeaveRepository _leaveRepository;
+    private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public LeaveRequestsController(
-        ILeaveRequestRepository leaveRequestRepository,
+        ILeaveRepository leaveRepository,
+        IUserRepository userRepository,
         IUnitOfWork unitOfWork)
     {
-        _leaveRequestRepository = leaveRequestRepository;
+        _leaveRepository = leaveRepository;
+        _userRepository = userRepository;
         _unitOfWork = unitOfWork;
     }
 
     [HttpGet]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<IEnumerable<LeaveRequestDto>>> GetLeaveRequests(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetPaginatedLeaves(
+        [FromQuery] Guid? employeeId,
+        [FromQuery] LeaveStatus? status,
+        [FromQuery] string? searchTerm,
+        [FromQuery] string? sortBy,
+        [FromQuery] bool isAscending = false,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
     {
-        var requests = await _leaveRequestRepository.GetAllAsync(cancellationToken);
+        var (items, totalCount) = await _leaveRepository.GetPaginatedLeavesAsync(
+            employeeId, status, searchTerm, sortBy, isAscending, pageNumber, pageSize, cancellationToken);
 
-        var response = requests.Select(lr => new LeaveRequestDto
+        var result = items.Select(l => new LeaveResponseDto
         {
-            Id = lr.Id,
-            EmployeeId = lr.EmployeeId,
-            EmployeeName = lr.Employee?.FullName ?? string.Empty,
-            LeaveTypeId = lr.LeaveTypeId,
-            LeaveTypeName = lr.LeaveType?.Name ?? string.Empty,
-            StartDate = lr.StartDate,
-            EndDate = lr.EndDate,
-            NumberOfDays = lr.NumberOfDays,
-            Approved = lr.Approved,
-            Cancelled = lr.Cancelled,
-            RequestComments = lr.RequestComments
+            Id = l.Id,
+            EmployeeId = l.EmployeeId,
+            EmployeeName = l.Employee?.FullName ?? string.Empty,
+            StartDate = l.StartDate,
+            EndDate = l.EndDate,
+            DurationInDays = l.NumberOfDays,
+            Reason = l.Reason ?? string.Empty, 
+            Status = l.Status,
+            ManagerComments = l.ManagerComments,
+            CreatedAt = l.CreatedAt
+        });
+
+        return Ok(new { totalCount, pageNumber, pageSize, items = result });
+    }
+
+    [HttpGet("my-leaves")]
+    public async Task<IActionResult> GetMyLeaves(CancellationToken cancellationToken)
+    {
+        var employeeId = GetCurrentUserId();
+        if (employeeId == Guid.Empty) return Unauthorized();
+
+        var leaves = await _leaveRepository.GetByEmployeeIdAsync(employeeId, cancellationToken);
+        var response = leaves.Select(l => new LeaveResponseDto
+        {
+            Id = l.Id,
+            EmployeeId = l.EmployeeId,
+            EmployeeName = l.Employee?.FullName ?? string.Empty,
+            StartDate = l.StartDate,
+            EndDate = l.EndDate,
+            DurationInDays = l.NumberOfDays,
+            Reason = l.Reason ?? string.Empty, 
+            Status = l.Status,
+            ManagerComments = l.ManagerComments,
+            CreatedAt = l.CreatedAt
         });
 
         return Ok(response);
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<LeaveRequestDto>> GetLeaveRequest(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<LeaveResponseDto>> GetLeaveById(Guid id, CancellationToken cancellationToken)
     {
-        var lr = await _leaveRequestRepository.GetByIdAsync(id, cancellationToken);
-        if (lr == null) return NotFound();
+        var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
+        if (leave == null) return NotFound();
 
-        var response = new LeaveRequestDto
+        return Ok(new LeaveResponseDto
         {
-            Id = lr.Id,
-            EmployeeId = lr.EmployeeId,
-            EmployeeName = lr.Employee?.FullName ?? string.Empty,
-            LeaveTypeId = lr.LeaveTypeId,
-            LeaveTypeName = lr.LeaveType?.Name ?? string.Empty,
-            StartDate = lr.StartDate,
-            EndDate = lr.EndDate,
-            NumberOfDays = lr.NumberOfDays,
-            Approved = lr.Approved,
-            Cancelled = lr.Cancelled,
-            RequestComments = lr.RequestComments
-        };
-
-        return Ok(response);
+            Id = leave.Id,
+            EmployeeId = leave.EmployeeId,
+            EmployeeName = leave.Employee?.FullName ?? string.Empty,
+            StartDate = leave.StartDate,
+            EndDate = leave.EndDate,
+            DurationInDays = leave.NumberOfDays,
+            Reason = leave.Reason ?? string.Empty, 
+            Status = leave.Status,
+            ManagerComments = leave.ManagerComments,
+            CreatedAt = leave.CreatedAt
+        });
     }
 
     [HttpPost]
-    public async Task<ActionResult<LeaveRequestDto>> CreateLeaveRequest([FromBody] CreateLeaveRequestDto dto, CancellationToken cancellationToken)
+    public async Task<ActionResult<LeaveResponseDto>> CreateLeave([FromBody] CreateLeaveDto dto, CancellationToken cancellationToken)
     {
         var employeeId = GetCurrentUserId();
-        if (employeeId == Guid.Empty)
-        {
-            return Unauthorized();
-        }
+        if (employeeId == Guid.Empty) return Unauthorized();
 
         var days = (dto.EndDate - dto.StartDate).Days + 1;
-        if (days <= 0)
-        {
-            return BadRequest(new { message = "Invalid start and end dates." });
-        }
-
-        var leaveRequest = new LeaveRequest
+        if (days <= 0) return BadRequest(new { message = "Invalid start and end dates." });
+        var leave = new LeaveRequest
         {
             EmployeeId = employeeId,
             LeaveTypeId = dto.LeaveTypeId,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
             NumberOfDays = days,
-            RequestComments = dto.RequestComments,
-            Reason = dto.RequestComments ?? "No reason provided", // <-- Fixes the NOT NULL constraint error
-            Approved = null, // Pending
+            Reason = dto.Reason ?? string.Empty, 
             Status = LeaveStatus.Pending,
-            Cancelled = false
+            Approved = null
         };
 
-        await _leaveRequestRepository.AddAsync(leaveRequest, cancellationToken);
+        await _leaveRepository.AddAsync(leave, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var createdRequest = await _leaveRequestRepository.GetByIdAsync(leaveRequest.Id, cancellationToken);
+        var createdLeave = await _leaveRepository.GetByIdAsync(leave.Id, cancellationToken);
+        if (createdLeave == null) return NotFound(new { message = "Failed to retrieve created leave request." });
 
-        var result = new LeaveRequestDto
+        return CreatedAtAction(nameof(GetLeaveById), new { id = createdLeave.Id }, new LeaveResponseDto
         {
-            Id = createdRequest!.Id,
-            EmployeeId = createdRequest.EmployeeId,
-            EmployeeName = createdRequest.Employee?.FullName ?? string.Empty,
-            LeaveTypeId = createdRequest.LeaveTypeId,
-            LeaveTypeName = createdRequest.LeaveType?.Name ?? string.Empty,
-            StartDate = createdRequest.StartDate,
-            EndDate = createdRequest.EndDate,
-            NumberOfDays = createdRequest.NumberOfDays,
-            Approved = createdRequest.Approved,
-            Cancelled = createdRequest.Cancelled,
-            RequestComments = createdRequest.RequestComments
-        };
+            Id = createdLeave.Id,
+            EmployeeId = createdLeave.EmployeeId,
+            EmployeeName = createdLeave.Employee?.FullName ?? string.Empty,
+            StartDate = createdLeave.StartDate,
+            EndDate = createdLeave.EndDate,
+            DurationInDays = createdLeave.NumberOfDays,
+            Reason = createdLeave.Reason ?? string.Empty,
+            Status = createdLeave.Status,
+            ManagerComments = createdLeave.ManagerComments,
+            CreatedAt = createdLeave.CreatedAt
+        });
+    }
 
-        return CreatedAtAction(nameof(GetLeaveRequest), new { id = leaveRequest.Id }, result);
+    [HttpPost("{id:guid}/approve")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> ApproveLeave(Guid id, [FromBody] ManagerActionDto dto, CancellationToken cancellationToken)
+    {
+        var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
+        if (leave == null) return NotFound();
+
+        if (leave.Status != LeaveStatus.Pending)
+            return BadRequest(new { message = "Only pending leave requests can be approved." });
+
+        leave.Status = LeaveStatus.Approved;
+        leave.Approved = true;
+        leave.ManagerComments = dto.Comments;
+
+        var user = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
+        if (user != null)
+        {
+            user.LeaveBalance -= leave.NumberOfDays;
+            _userRepository.Update(user);
+        }
+
+        _leaveRepository.Update(leave);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/reject")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> RejectLeave(Guid id, [FromBody] ManagerActionDto dto, CancellationToken cancellationToken)
+    {
+        var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
+        if (leave == null) return NotFound();
+
+        if (leave.Status != LeaveStatus.Pending)
+            return BadRequest(new { message = "Only pending leave requests can be rejected." });
+
+        leave.Status = LeaveStatus.Rejected;
+        leave.Approved = false;
+        leave.ManagerComments = dto.Comments;
+
+        _leaveRepository.Update(leave);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return NoContent();
     }
 }
