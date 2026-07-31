@@ -59,14 +59,16 @@ public class LeaveRepository : ILeaveRepository
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
             var term = searchTerm.Trim().ToLower();
-            query = query.Where(l => l.Reason.ToLower().Contains(term) ||
+            query = query.Where(l => (l.Reason != null && l.Reason.ToLower().Contains(term)) ||
                                      (l.Employee != null && l.Employee.FullName.ToLower().Contains(term)));
         }
 
         query = sortBy?.ToLower() switch
         {
             "date" => isAscending ? query.OrderBy(l => l.StartDate) : query.OrderByDescending(l => l.StartDate),
-            "employee" => isAscending ? query.OrderBy(l => l.Employee!.FullName) : query.OrderByDescending(l => l.Employee!.FullName),
+            "employee" => isAscending
+                ? query.OrderBy(l => l.Employee != null ? l.Employee.FullName : string.Empty)
+                : query.OrderByDescending(l => l.Employee != null ? l.Employee.FullName : string.Empty),
             "status" => isAscending ? query.OrderBy(l => l.Status) : query.OrderByDescending(l => l.Status),
             _ => query.OrderByDescending(l => l.CreatedAt)
         };
