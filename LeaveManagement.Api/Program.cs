@@ -31,13 +31,29 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 AutoReplenishment = true,
-                PermitLimit = 20, 
+                PermitLimit = 20,
                 QueueLimit = 2,
                 Window = TimeSpan.FromSeconds(10)
             }));
 });
 
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.SetIsOriginAllowed(origin => true) 
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials(); 
+    });
+});
+
+
 var app = builder.Build();
+
+
+app.UseCors("AllowAll");
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
@@ -45,12 +61,12 @@ app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Leave Management API V1");
-    c.RoutePrefix = string.Empty; 
+    c.RoutePrefix = string.Empty;
 });
 
 app.UseHttpsRedirection();
 
-app.UseRateLimiter(); 
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

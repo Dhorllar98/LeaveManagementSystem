@@ -11,6 +11,6 @@ public class LeaveAllocation
     public Guid EmployeeId { get; set; }
     public User Employee { get; set; } = null!;
 
-    public int Period { get; set; } // e.g., Year like 2026
+    public int Period { get; set; } 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

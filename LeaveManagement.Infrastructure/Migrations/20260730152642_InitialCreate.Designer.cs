@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LeaveManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260729125837_FixLeaveAllocationRelationships")]
-    partial class FixLeaveAllocationRelationships
+    [Migration("20260730152642_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -22,18 +22,17 @@ namespace LeaveManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.LeaveAllocation", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("EmployeeId")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("LeaveTypeId")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid?>("LeaveTypeId1")
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("LeaveTypeId")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("NumberOfDays")
@@ -44,9 +43,11 @@ namespace LeaveManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LeaveTypeId1");
+                    b.HasIndex("EmployeeId");
 
-                    b.ToTable("LeaveAllocations");
+                    b.HasIndex("LeaveTypeId");
+
+                    b.ToTable("LeaveAllocations", (string)null);
                 });
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.LeaveRequest", b =>
@@ -55,11 +56,14 @@ namespace LeaveManagement.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool?>("Approved")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Cancelled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("DurationInDays")
-                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("TEXT");
@@ -67,13 +71,22 @@ namespace LeaveManagement.Infrastructure.Migrations
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("LeaveTypeId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ManagerComments")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("NumberOfDays")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestComments")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("StartDate")
@@ -82,12 +95,11 @@ namespace LeaveManagement.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
 
                     b.HasIndex("EmployeeId");
+
+                    b.HasIndex("LeaveTypeId");
 
                     b.ToTable("LeaveRequests", (string)null);
                 });
@@ -166,9 +178,19 @@ namespace LeaveManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.LeaveAllocation", b =>
                 {
+                    b.HasOne("LeaveManagement.Domain.Entities.User", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("LeaveManagement.Domain.Entities.LeaveType", "LeaveType")
                         .WithMany()
-                        .HasForeignKey("LeaveTypeId1");
+                        .HasForeignKey("LeaveTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employee");
 
                     b.Navigation("LeaveType");
                 });
@@ -181,7 +203,15 @@ namespace LeaveManagement.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("LeaveManagement.Domain.Entities.LeaveType", "LeaveType")
+                        .WithMany()
+                        .HasForeignKey("LeaveTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("Employee");
+
+                    b.Navigation("LeaveType");
                 });
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.User", b =>
