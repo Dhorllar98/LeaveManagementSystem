@@ -31,7 +31,7 @@ public class ProfileController : BaseController
             Id = user.Id,
             FullName = user.FullName,
             Email = user.Email,
-            Role = user.Role,
+            Role = user.Role.ToString(),
             LeaveBalance = user.LeaveBalance,
             CreatedAt = user.CreatedAt
         });
