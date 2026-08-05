@@ -5,6 +5,7 @@ using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Infrastructure;
 using LeaveManagement.Infrastructure.Authentication;
 using LeaveManagement.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore; 
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -72,13 +73,16 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-
+//Auto-Apply Migrations and Seed Database on Startup
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
         var context = services.GetRequiredService<AppDbContext>();
+
+        await context.Database.MigrateAsync();
+
         await DbInitializer.SeedAsync(context);
     }
     catch (Exception ex)
