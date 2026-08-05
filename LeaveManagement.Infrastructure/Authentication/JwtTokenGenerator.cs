@@ -23,7 +23,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         var secret = _configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is missing.");
         var issuer = _configuration["JwtSettings:Issuer"];
         var audience = _configuration["JwtSettings:Audience"];
-        var expiryMinutes = double.Parse(_configuration["JwtSettings:AccessTokenExpirationMinutes"] ?? "15");
+        var expiryMinutes = double.Parse(_configuration["JwtSettings:AccessTokenExpirationMinutes"] ?? "30");
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

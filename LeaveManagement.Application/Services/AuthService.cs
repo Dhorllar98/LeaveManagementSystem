@@ -5,7 +5,6 @@ using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Exceptions;
 using LeaveManagement.Domain.Interfaces;
-using ValidationException = LeaveManagement.Domain.Exceptions.ValidationException;
 
 namespace LeaveManagement.Application.Services;
 
@@ -39,7 +38,7 @@ public class AuthService : IAuthService
             var errors = validationResult.Errors
                 .GroupBy(e => e.PropertyName, e => e.ErrorMessage)
                 .ToDictionary(g => g.Key, g => g.ToArray());
-            throw new ValidationException(errors);
+            throw new Domain.Exceptions.ValidationException(errors);
         }
 
         if (await _userRepository.EmailExistsAsync(request.Email, cancellationToken))
@@ -53,6 +52,8 @@ public class AuthService : IAuthService
             Email = request.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Role = request.Role,
+            Department = request.Department,
+            Designation = request.Designation,
             LeaveBalance = 20
         };
 
@@ -72,10 +73,12 @@ public class AuthService : IAuthService
             UserId = user.Id,
             FullName = user.FullName,
             Email = user.Email,
+            Department = user.Department,
+            Designation = user.Designation,
             Role = user.Role,
             Token = token,
             RefreshToken = refreshToken,
-            Expiration = DateTime.UtcNow.AddMinutes(15)
+            Expiration = DateTime.UtcNow.AddMinutes(30)
         }, "Registration successful.");
     }
 
@@ -84,13 +87,12 @@ public class AuthService : IAuthService
         var validationResult = await _loginValidator.ValidateAsync(request, cancellationToken);
         if (!validationResult.IsValid)
         {
-            throw new ValidationException("Invalid login request payload.");
+            throw new Domain.Exceptions.ValidationException("Invalid login request payload.");
         }
 
         var user = await _userRepository.GetByEmailAsync(request.Email, cancellationToken);
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
-            // Security rule: Never specify whether it was the email or password that was wrong
             throw new UnauthorizedAccessException("Invalid email or password.");
         }
 
@@ -108,17 +110,19 @@ public class AuthService : IAuthService
             UserId = user.Id,
             FullName = user.FullName,
             Email = user.Email,
+            Department = user.Department,
+            Designation = user.Designation,
             Role = user.Role,
             Token = token,
             RefreshToken = refreshToken,
-            Expiration = DateTime.UtcNow.AddMinutes(15)
+            Expiration = DateTime.UtcNow.AddMinutes(30)
         }, "Login successful.");
     }
 
     public async Task<ApiResponse<AuthResponseDto>> RefreshTokenAsync(RefreshTokenRequestDto request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.RefreshToken))
-            throw new ValidationException("Refresh token is required.");
+            throw new Domain.Exceptions.ValidationException("Refresh token is required.");
 
         var user = await _userRepository.GetByRefreshTokenAsync(request.RefreshToken, cancellationToken);
 
@@ -141,10 +145,12 @@ public class AuthService : IAuthService
             UserId = user.Id,
             FullName = user.FullName,
             Email = user.Email,
+            Department = user.Department,
+            Designation = user.Designation,
             Role = user.Role,
             Token = newAccessToken,
             RefreshToken = newRefreshToken,
-            Expiration = DateTime.UtcNow.AddMinutes(15)
+            Expiration = DateTime.UtcNow.AddMinutes(30)
         }, "Token refreshed successfully.");
     }
 }

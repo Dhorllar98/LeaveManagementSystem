@@ -9,6 +9,8 @@ namespace LeaveManagement.Domain.Entities
         public string Email { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         public UserRole Role { get; set; } = UserRole.Employee;
+        public string? Department { get; set; }
+        public string? Designation { get; set; }
         public int LeaveBalance { get; set; } = 20; // Default 20 days per year
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpiryTime { get; set; }

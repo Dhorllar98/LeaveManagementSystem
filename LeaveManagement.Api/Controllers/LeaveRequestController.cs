@@ -1,4 +1,5 @@
-﻿using LeaveManagement.Application.DTOs.Leave;
+﻿using LeaveManagement.Application.Common.Helpers; 
+using LeaveManagement.Application.DTOs.Leave;
 using LeaveManagement.Application.DTOs.LeaveRequest;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
@@ -42,7 +43,7 @@ public class LeaveRequestsController : ControllerBase
         return userId;
     }
 
-    // 🔍 GET ALL / PAGINATED & FILTERED LEAVE REQUESTS
+    // GET ALL / PAGINATED & FILTERED LEAVE REQUESTS
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
     {
@@ -88,6 +89,20 @@ public class LeaveRequestsController : ControllerBase
     {
         var currentUserId = GetCurrentUserId();
 
+        // Calculate business days (excluding weekends)
+        int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate);
+
+        if (businessDays <= 0)
+        {
+            return BadRequest(new { message = "The selected date range does not contain any official working days (Monday - Friday)." });
+        }
+
+        var applicant = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
+        if (applicant != null && applicant.LeaveBalance < businessDays)
+        {
+            return BadRequest(new { message = $"Insufficient leave balance. You requested {businessDays} working day(s), but only have {applicant.LeaveBalance} day(s) remaining." });
+        }
+
         var leaveRequest = new LeaveRequest
         {
             Id = Guid.NewGuid(),
@@ -95,7 +110,7 @@ public class LeaveRequestsController : ControllerBase
             LeaveTypeId = dto.LeaveTypeId,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
-            NumberOfDays = (dto.EndDate - dto.StartDate).Days + 1,
+            NumberOfDays = businessDays, 
             Reason = dto.Reason,
             Status = LeaveStatus.Pending,
             CreatedAt = DateTime.UtcNow
@@ -107,7 +122,7 @@ public class LeaveRequestsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = leaveRequest.Id }, leaveRequest);
     }
 
-    //  UPDATE PENDING LEAVE REQUEST
+    // UPDATE PENDING LEAVE REQUEST
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateLeaveRequest(Guid id, [FromBody] CreateLeaveRequestDto dto, CancellationToken cancellationToken)
     {
@@ -126,10 +141,18 @@ public class LeaveRequestsController : ControllerBase
             return BadRequest(new { message = "Only pending leave requests can be updated." });
         }
 
+        // Calculate business days (excluding weekends)
+        int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate);
+
+        if (businessDays <= 0)
+        {
+            return BadRequest(new { message = "The selected date range does not contain any official working days (Monday - Friday)." });
+        }
+
         leave.LeaveTypeId = dto.LeaveTypeId;
         leave.StartDate = dto.StartDate;
         leave.EndDate = dto.EndDate;
-        leave.NumberOfDays = (dto.EndDate - dto.StartDate).Days + 1;
+        leave.NumberOfDays = businessDays; 
         leave.Reason = dto.Reason;
 
         _leaveRepository.Update(leave);
@@ -147,7 +170,7 @@ public class LeaveRequestsController : ControllerBase
 
         var currentUserId = GetCurrentUserId();
 
-        if (leave.EmployeeId != currentUserId && !User.IsInRole("Manager"))
+        if (leave.EmployeeId != currentUserId && !User.IsInRole("Manager") && !User.IsInRole("Admin"))
         {
             return Forbid();
         }
@@ -164,7 +187,7 @@ public class LeaveRequestsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/approve")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ApproveLeave(Guid id, [FromBody] ManagerActionDto dto, CancellationToken cancellationToken)
     {
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
@@ -189,6 +212,7 @@ public class LeaveRequestsController : ControllerBase
         var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
         if (applicant != null)
         {
+            // Deducts business days from employee leave balance
             applicant.LeaveBalance -= leave.NumberOfDays;
             _userRepository.Update(applicant);
         }
@@ -200,7 +224,7 @@ public class LeaveRequestsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/reject")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> RejectLeave(Guid id, [FromBody] ManagerActionDto dto, CancellationToken cancellationToken)
     {
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
