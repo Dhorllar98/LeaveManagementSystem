@@ -18,7 +18,7 @@ public class ProfileController : BaseController
     }
 
     [HttpGet]
-    public async Task<ActionResult<ProfileResponseDto>> GetProfile(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetProfile(CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
         if (userId == Guid.Empty) return Unauthorized();
@@ -26,14 +26,29 @@ public class ProfileController : BaseController
         var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
         if (user == null) return NotFound();
 
-        return Ok(new ProfileResponseDto
+        var nameParts = (user.FullName ?? string.Empty).Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        var firstName = nameParts.Length > 0 ? nameParts[0] : string.Empty;
+        var lastName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
+
+        return Ok(new
         {
-            Id = user.Id,
-            FullName = user.FullName,
-            Email = user.Email,
-            Role = user.Role.ToString(),
-            LeaveBalance = user.LeaveBalance,
-            CreatedAt = user.CreatedAt
+            success = true,
+            data = new
+            {
+                id = user.Id,
+                name = new
+                {
+                    fullName = user.FullName,
+                    firstName = firstName,
+                    lastName = lastName
+                },
+                email = user.Email,
+                role = user.Role.ToString(),
+                department = user.Department,
+                designation = user.Designation,
+                leaveBalance = user.LeaveBalance,
+                createdAt = user.CreatedAt
+            }
         });
     }
 
@@ -46,13 +61,37 @@ public class ProfileController : BaseController
         var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
         if (user == null) return NotFound();
 
-        user.FullName = dto.FullName;
+        user.FullName = string.IsNullOrWhiteSpace(dto.FullName) ? user.FullName : dto.FullName;
+        user.Department = dto.Department;
+        user.Designation = dto.Designation;
         user.UpdatedAt = DateTime.UtcNow;
 
         _userRepository.Update(user);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return NoContent();
+        var nameParts = (user.FullName ?? string.Empty).Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+
+        return Ok(new
+        {
+            success = true,
+            message = "Profile updated successfully.",
+            data = new
+            {
+                id = user.Id,
+                name = new
+                {
+                    fullName = user.FullName,
+                    firstName = nameParts.Length > 0 ? nameParts[0] : string.Empty,
+                    lastName = nameParts.Length > 1 ? nameParts[1] : string.Empty
+                },
+                email = user.Email,
+                role = user.Role.ToString(),
+                department = user.Department,
+                designation = user.Designation,
+                leaveBalance = user.LeaveBalance,
+                createdAt = user.CreatedAt
+            }
+        });
     }
 
     [HttpPost("change-password")]

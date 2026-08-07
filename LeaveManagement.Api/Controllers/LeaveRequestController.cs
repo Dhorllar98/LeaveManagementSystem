@@ -1,4 +1,4 @@
-﻿using LeaveManagement.Application.Common.Helpers; 
+﻿using LeaveManagement.Application.Common.Helpers;
 using LeaveManagement.Application.DTOs.Leave;
 using LeaveManagement.Application.DTOs.LeaveRequest;
 using LeaveManagement.Application.Interfaces;
@@ -47,7 +47,6 @@ public class LeaveRequestsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
     {
-        // Non-managers are restricted to viewing only their own requests
         if (!User.IsInRole("Manager") && !User.IsInRole("Admin"))
         {
             query.EmployeeId = GetCurrentUserId();
@@ -89,7 +88,6 @@ public class LeaveRequestsController : ControllerBase
     {
         var currentUserId = GetCurrentUserId();
 
-        // Calculate business days (excluding weekends)
         int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate);
 
         if (businessDays <= 0)
@@ -110,7 +108,7 @@ public class LeaveRequestsController : ControllerBase
             LeaveTypeId = dto.LeaveTypeId,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
-            NumberOfDays = businessDays, 
+            NumberOfDays = businessDays,
             Reason = dto.Reason,
             Status = LeaveStatus.Pending,
             CreatedAt = DateTime.UtcNow
@@ -119,10 +117,27 @@ public class LeaveRequestsController : ControllerBase
         await _leaveRepository.AddAsync(leaveRequest, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return CreatedAtAction(nameof(GetById), new { id = leaveRequest.Id }, leaveRequest);
+        var responseData = new
+        {
+            id = leaveRequest.Id,
+            employeeId = leaveRequest.EmployeeId,
+            leaveTypeId = leaveRequest.LeaveTypeId,
+            startDate = leaveRequest.StartDate,
+            endDate = leaveRequest.EndDate,
+            numberOfDays = leaveRequest.NumberOfDays,
+            reason = leaveRequest.Reason,
+            status = leaveRequest.Status.ToString(),
+            createdAt = leaveRequest.CreatedAt
+        };
+
+        return CreatedAtAction(nameof(GetById), new { id = leaveRequest.Id }, new
+        {
+            success = true,
+            message = "Leave request submitted successfully.",
+            data = responseData
+        });
     }
 
-    // UPDATE PENDING LEAVE REQUEST
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateLeaveRequest(Guid id, [FromBody] CreateLeaveRequestDto dto, CancellationToken cancellationToken)
     {
@@ -141,7 +156,6 @@ public class LeaveRequestsController : ControllerBase
             return BadRequest(new { message = "Only pending leave requests can be updated." });
         }
 
-        // Calculate business days (excluding weekends)
         int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate);
 
         if (businessDays <= 0)
@@ -152,7 +166,7 @@ public class LeaveRequestsController : ControllerBase
         leave.LeaveTypeId = dto.LeaveTypeId;
         leave.StartDate = dto.StartDate;
         leave.EndDate = dto.EndDate;
-        leave.NumberOfDays = businessDays; 
+        leave.NumberOfDays = businessDays;
         leave.Reason = dto.Reason;
 
         _leaveRepository.Update(leave);
@@ -161,7 +175,6 @@ public class LeaveRequestsController : ControllerBase
         return Ok(new { message = "Leave request updated successfully.", data = leave });
     }
 
-    // DELETE / CANCEL PENDING LEAVE REQUEST
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteLeaveRequest(Guid id, CancellationToken cancellationToken)
     {
@@ -212,7 +225,6 @@ public class LeaveRequestsController : ControllerBase
         var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
         if (applicant != null)
         {
-            // Deducts business days from employee leave balance
             applicant.LeaveBalance -= leave.NumberOfDays;
             _userRepository.Update(applicant);
         }

@@ -5,13 +5,21 @@ using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Infrastructure;
 using LeaveManagement.Infrastructure.Authentication;
 using LeaveManagement.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore; 
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization; // <-- Added for ReferenceHandler
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. Presentation & API Services
 builder.Services.AddPresentationServices(builder.Configuration);
+
+// Configure Controllers to ignore object reference cycles globally
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
 
 // 2. Application Layer Services & Validators
 builder.Services.AddApplicationServices();
@@ -73,7 +81,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-//Auto-Apply Migrations and Seed Database on Startup
+// Auto-Apply Migrations and Seed Database on Startup
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
