@@ -67,7 +67,17 @@ public class LeaveRequestsController : ControllerBase
             employeeName = l.Employee?.FullName ?? "N/A",
             department = !string.IsNullOrWhiteSpace(l.Employee?.Department) ? l.Employee.Department : "Unassigned",
             leaveTypeId = l.LeaveTypeId,
-            leaveType = l.LeaveType?.Name ?? "N/A", 
+
+            leaveType = l.LeaveType?.Name ?? "N/A",
+            leaveTypeName = l.LeaveType?.Name ?? "N/A",
+            type = l.LeaveType?.Name ?? "N/A",
+
+            leaveTypeDetails = new
+            {
+                id = l.LeaveTypeId,
+                name = l.LeaveType?.Name ?? "N/A"
+            },
+
             startDate = l.StartDate,
             endDate = l.EndDate,
             numberOfDays = l.NumberOfDays,
@@ -105,7 +115,17 @@ public class LeaveRequestsController : ControllerBase
             employeeName = leave.Employee?.FullName ?? "N/A",
             department = !string.IsNullOrWhiteSpace(leave.Employee?.Department) ? leave.Employee.Department : "Unassigned",
             leaveTypeId = leave.LeaveTypeId,
+
             leaveType = leave.LeaveType?.Name ?? "N/A",
+            leaveTypeName = leave.LeaveType?.Name ?? "N/A",
+            type = leave.LeaveType?.Name ?? "N/A",
+
+            leaveTypeDetails = new
+            {
+                id = leave.LeaveTypeId,
+                name = leave.LeaveType?.Name ?? "N/A"
+            },
+
             startDate = leave.StartDate,
             endDate = leave.EndDate,
             numberOfDays = leave.NumberOfDays,
