@@ -151,7 +151,7 @@ public class LeaveRequestsController : ControllerBase
         var applicant = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
         if (applicant != null && applicant.LeaveBalance < businessDays)
         {
-            return BadRequest(new { message = $"Insufficient leave balance. You requested {businessDays} working day(s), but only have {applicant.LeaveBalance} day(s) remaining." });
+            return BadRequest(new { message = $"Insufficient leave balance. You requested {businessDays} working day(s), but only have {Math.Max(0, applicant.LeaveBalance)} day(s) remaining." });
         }
 
         var leaveRequest = new LeaveRequest
@@ -271,16 +271,25 @@ public class LeaveRequestsController : ControllerBase
             return BadRequest(new { message = "Only pending leave requests can be approved." });
         }
 
-        leave.Status = LeaveStatus.Approved;
-        leave.Approved = true;
-        leave.ManagerComments = dto.Comments;
-
         var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
         if (applicant != null)
         {
-            applicant.LeaveBalance -= leave.NumberOfDays;
+            // STRICT CHECK: Reject approval if leave balance will drop below 0
+            if (applicant.LeaveBalance < leave.NumberOfDays)
+            {
+                return BadRequest(new
+                {
+                    message = $"Approval failed. The employee requested {leave.NumberOfDays} day(s), but only has {Math.Max(0, applicant.LeaveBalance)} day(s) remaining."
+                });
+            }
+
+            applicant.LeaveBalance = Math.Max(0, applicant.LeaveBalance - leave.NumberOfDays);
             _userRepository.Update(applicant);
         }
+
+        leave.Status = LeaveStatus.Approved;
+        leave.Approved = true;
+        leave.ManagerComments = dto.Comments;
 
         _leaveRepository.Update(leave);
         await _unitOfWork.SaveChangesAsync(cancellationToken);

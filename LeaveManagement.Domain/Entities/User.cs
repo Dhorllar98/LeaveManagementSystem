@@ -14,6 +14,11 @@ namespace LeaveManagement.Domain.Entities
         public int LeaveBalance { get; set; } = 20; // Default 20 days per year
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpiryTime { get; set; }
+
+        // ADDED FOR PASSWORD RESET & PROVISIONING
+        public string? PasswordResetToken { get; set; }
+        public DateTime? ResetTokenExpiresAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
 

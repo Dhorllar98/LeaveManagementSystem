@@ -5,8 +5,9 @@ using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Infrastructure;
 using LeaveManagement.Infrastructure.Authentication;
 using LeaveManagement.Infrastructure.Data;
+using LeaveManagement.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json.Serialization; // <-- Added for ReferenceHandler
+using System.Text.Json.Serialization; 
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,6 +28,7 @@ builder.Services.AddApplicationServices();
 // 3. Infrastructure Layer (Data, Repositories, etc.)
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // 4. JWT Authentication & Options Binding
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
@@ -81,7 +83,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Auto-Apply Migrations and Seed Database on Startup
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;

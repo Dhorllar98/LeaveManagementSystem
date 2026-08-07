@@ -1,6 +1,8 @@
 ﻿using LeaveManagement.Application.DTOs.Auth;
 using LeaveManagement.Application.Interfaces;
+using LeaveManagement.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore; 
 
 namespace LeaveManagement.Api.Controllers;
 
@@ -32,5 +34,25 @@ public class AuthController : BaseController
     {
         var response = await _authService.RefreshTokenAsync(request, cancellationToken);
         return Ok(response);
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto, [FromServices] AppDbContext context, CancellationToken cancellationToken)
+    {
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email, cancellationToken);
+
+        if (user == null || user.PasswordResetToken != dto.Token || user.ResetTokenExpiresAt < DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "Invalid or expired password reset token." });
+        }
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        user.PasswordResetToken = null; 
+        user.ResetTokenExpiresAt = null;
+        user.UpdatedAt = DateTime.UtcNow;
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { success = true, message = "Password reset successfully. You can now log in with your new password." });
     }
 }
