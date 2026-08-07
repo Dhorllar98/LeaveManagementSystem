@@ -60,11 +60,28 @@ public class LeaveRequestsController : ControllerBase
             query.PageSize,
             cancellationToken);
 
+        var formattedItems = items.Select(l => new
+        {
+            id = l.Id,
+            employeeId = l.EmployeeId,
+            employeeName = l.Employee?.FullName ?? "N/A",
+            department = !string.IsNullOrWhiteSpace(l.Employee?.Department) ? l.Employee.Department : "Unassigned",
+            leaveTypeId = l.LeaveTypeId,
+            leaveType = l.LeaveType?.Name ?? "N/A", 
+            startDate = l.StartDate,
+            endDate = l.EndDate,
+            numberOfDays = l.NumberOfDays,
+            reason = l.Reason,
+            status = l.Status.ToString(),
+            createdAt = l.CreatedAt,
+            managerComments = l.ManagerComments
+        });
+
         return Ok(new
         {
             success = true,
             message = "Leave requests retrieved successfully.",
-            data = items,
+            data = formattedItems,
             pagination = new
             {
                 totalCount,
@@ -80,7 +97,23 @@ public class LeaveRequestsController : ControllerBase
     {
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
         if (leave == null) return NotFound(new { message = "Leave request not found." });
-        return Ok(leave);
+
+        return Ok(new
+        {
+            id = leave.Id,
+            employeeId = leave.EmployeeId,
+            employeeName = leave.Employee?.FullName ?? "N/A",
+            department = !string.IsNullOrWhiteSpace(leave.Employee?.Department) ? leave.Employee.Department : "Unassigned",
+            leaveTypeId = leave.LeaveTypeId,
+            leaveType = leave.LeaveType?.Name ?? "N/A",
+            startDate = leave.StartDate,
+            endDate = leave.EndDate,
+            numberOfDays = leave.NumberOfDays,
+            reason = leave.Reason,
+            status = leave.Status.ToString(),
+            createdAt = leave.CreatedAt,
+            managerComments = leave.ManagerComments
+        });
     }
 
     [HttpPost]
