@@ -76,7 +76,7 @@ public class UsersController : BaseController
         await _context.Users.AddAsync(newUser, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        string baseUrl = !string.IsNullOrWhiteSpace(dto.ClientResetUrl)
+        string baseUrl = !string.IsNullOrWhiteSpace(dto.ClientResetUrl)  
             ? dto.ClientResetUrl
             : "https://your-frontend-app.com/reset-password";
 
