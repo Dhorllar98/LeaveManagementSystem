@@ -17,7 +17,6 @@ builder.Configuration
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false)
     .AddEnvironmentVariables();
-// -----------------------------
 
 // 1. Presentation & API Services
 builder.Services.AddPresentationServices(builder.Configuration);

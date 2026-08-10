@@ -23,35 +23,39 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unhandled exception occurred.");
             await HandleExceptionAsync(context, ex);
         }
     }
 
-    private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/json";
 
-        context.Response.StatusCode = exception switch
+        var (statusCode, message) = exception switch
         {
-            ValidationException => (int)HttpStatusCode.BadRequest,
-            UnauthorizedAccessException => (int)HttpStatusCode.Unauthorized,
-            NotFoundException => (int)HttpStatusCode.NotFound,
-            ConflictException => (int)HttpStatusCode.Conflict,
-            _ => (int)HttpStatusCode.InternalServerError
+            ValidationException => ((int)HttpStatusCode.BadRequest, "Validation failed."),
+            UnauthorizedAccessException => ((int)HttpStatusCode.Unauthorized, exception.Message),
+            NotFoundException => ((int)HttpStatusCode.NotFound, exception.Message),
+            ConflictException => ((int)HttpStatusCode.Conflict, exception.Message),
+            _ => ((int)HttpStatusCode.InternalServerError, "An unexpected error occurred on the server.")
         };
+
+        context.Response.StatusCode = statusCode;
+
+        if (statusCode >= 500)
+        {
+            _logger.LogError(exception, "Unhandled server error occurred.");
+        }
+        else
+        {
+            _logger.LogWarning("Handled HTTP {StatusCode} [{ExceptionType}]: {Message}",
+                statusCode, exception.GetType().Name, exception.Message);
+        }
 
         var response = new
         {
             Success = false,
-            Message = exception switch
-            {
-                ValidationException => "Validation failed",
-                UnauthorizedAccessException => exception.Message,
-                NotFoundException => exception.Message,
-                ConflictException => exception.Message,
-                _ => "An unexpected error occurred on the server."
-            },
+            Message = message,
             Errors = exception is ValidationException validationEx ? validationEx.Errors : null
         };
 
