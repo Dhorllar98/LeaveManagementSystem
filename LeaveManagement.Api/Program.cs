@@ -7,10 +7,17 @@ using LeaveManagement.Infrastructure.Authentication;
 using LeaveManagement.Infrastructure.Data;
 using LeaveManagement.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json.Serialization; 
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Configuration.Sources.Clear();
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false)
+    .AddEnvironmentVariables();
+// -----------------------------
 
 // 1. Presentation & API Services
 builder.Services.AddPresentationServices(builder.Configuration);
