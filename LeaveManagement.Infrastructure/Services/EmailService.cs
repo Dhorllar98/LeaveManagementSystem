@@ -1,8 +1,9 @@
 ﻿using LeaveManagement.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Net;
-using System.Net.Mail;
+using sib_api_v3_sdk.Api;
+using sib_api_v3_sdk.Client;
+using sib_api_v3_sdk.Model;
 
 namespace LeaveManagement.Infrastructure.Services;
 
@@ -17,46 +18,37 @@ public class EmailService : IEmailService
         _logger = logger;
     }
 
-    public async Task SendEmailAsync(string to, string subject, string body)
+    public async System.Threading.Tasks.Task SendEmailAsync(string to, string subject, string body)
     {
-        var smtpServer = _config["EmailSettings:SmtpServer"] ?? "smtp.gmail.com";
-        var port = int.Parse(_config["EmailSettings:Port"] ?? "587");
-        var senderEmail = _config["EmailSettings:SenderEmail"];
-        var password = _config["EmailSettings:Password"];
+        var apiKey = _config["EmailSettings:BrevoApiKey"];
+        var senderEmail = _config["EmailSettings:SenderEmail"] ?? "noreply@leavemanagementsystem.com";
 
-        if (string.IsNullOrEmpty(senderEmail) || string.IsNullOrEmpty(password))
+        if (string.IsNullOrEmpty(apiKey))
         {
-            _logger.LogWarning("EmailSettings are missing or incomplete. Logging email to console.");
+            _logger.LogWarning("Brevo API Key is missing. Logging email to console.");
             Console.WriteLine($"[MOCK EMAIL TO {to}]: {subject}\n{body}");
             return;
         }
 
         try
         {
-            using var client = new SmtpClient(smtpServer, port)
-            {
-                Credentials = new NetworkCredential(senderEmail, password),
-                EnableSsl = true,
-                Timeout = 5000 
-            };
+            Configuration.Default.ApiKey["api-key"] = apiKey;
 
-            using var mailMessage = new MailMessage
+            var apiInstance = new TransactionalEmailsApi();
+            var sendSmtpEmail = new SendSmtpEmail
             {
-                From = new MailAddress(senderEmail, "Leave Management System"),
+                Sender = new SendSmtpEmailSender("Leave Management System", senderEmail),
+                To = new List<SendSmtpEmailTo> { new SendSmtpEmailTo(to) },
                 Subject = subject,
-                Body = body,
-                IsBodyHtml = true
+                HtmlContent = body
             };
 
-            mailMessage.To.Add(to);
-            await client.SendMailAsync(mailMessage);
-
-            _logger.LogInformation("Successfully sent email to {ToAddress}", to);
+            await apiInstance.SendTransacEmailAsync(sendSmtpEmail);
+            _logger.LogInformation("Successfully sent email to {ToAddress} via Brevo HTTP API", to);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("Could not dispatch email to {ToAddress} via SMTP (Host firewall may be blocking port {Port}): {Message}",
-                to, port, ex.Message);
+            _logger.LogError(ex, "Failed to send email to {ToAddress} via Brevo API", to);
         }
     }
 }
