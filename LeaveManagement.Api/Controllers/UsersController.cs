@@ -40,11 +40,11 @@ public class UsersController : BaseController
     }
 
     [HttpPost("provision")]
-    [Authorize(Roles = "Admin,Manager")] 
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ProvisionUser(
-    [FromBody] AdminCreateUserDto dto,
-    [FromServices] IEmailService emailService,
-    CancellationToken cancellationToken)
+        [FromBody] AdminCreateUserDto dto,
+        [FromServices] IEmailService emailService,
+        CancellationToken cancellationToken)
     {
         var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email, cancellationToken);
         if (existingUser != null)
@@ -76,7 +76,7 @@ public class UsersController : BaseController
         await _context.Users.AddAsync(newUser, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        string baseUrl = !string.IsNullOrWhiteSpace(dto.ClientResetUrl)  
+        string baseUrl = !string.IsNullOrWhiteSpace(dto.ClientResetUrl)
             ? dto.ClientResetUrl
             : "https://your-frontend-app.com/reset-password";
 
@@ -89,7 +89,16 @@ public class UsersController : BaseController
             <p>Please click the link below to set your new password:</p>
             <p><a href='{resetLink}' style='background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block;'>Set New Password</a></p>";
 
-        await emailService.SendEmailAsync(dto.Email, "Account Created - Set Your Password", emailBody);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await emailService.SendEmailAsync(dto.Email, "Account Created - Set Your Password", emailBody);
+            }
+            catch
+            {
+            }
+        });
 
         return Ok(new
         {
