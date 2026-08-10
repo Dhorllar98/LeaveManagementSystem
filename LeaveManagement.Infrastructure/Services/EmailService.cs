@@ -24,7 +24,6 @@ public class EmailService : IEmailService
         var senderEmail = _config["EmailSettings:SenderEmail"];
         var password = _config["EmailSettings:Password"];
 
-        // Fallback: If credentials aren't provided in configuration, log to console
         if (string.IsNullOrEmpty(senderEmail) || string.IsNullOrEmpty(password))
         {
             _logger.LogWarning("EmailSettings are missing or incomplete. Logging email to console.");
@@ -37,7 +36,8 @@ public class EmailService : IEmailService
             using var client = new SmtpClient(smtpServer, port)
             {
                 Credentials = new NetworkCredential(senderEmail, password),
-                EnableSsl = true
+                EnableSsl = true,
+                Timeout = 5000 
             };
 
             using var mailMessage = new MailMessage
@@ -55,8 +55,8 @@ public class EmailService : IEmailService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send email to {ToAddress} via SMTP server {SmtpServer}", to, smtpServer);
-            // Catch error so API call doesn't throw a 500 unhandled exception to client
+            _logger.LogWarning("Could not dispatch email to {ToAddress} via SMTP (Host firewall may be blocking port {Port}): {Message}",
+                to, port, ex.Message);
         }
     }
 }
