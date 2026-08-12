@@ -13,7 +13,7 @@ namespace LeaveManagement.Api.Controllers;
 public class UsersController : BaseController
 {
     private readonly AppDbContext _context;
-    private readonly ILogger<UsersController> _logger; 
+    private readonly ILogger<UsersController> _logger;
 
     public UsersController(AppDbContext context, ILogger<UsersController> logger)
     {
@@ -21,18 +21,22 @@ public class UsersController : BaseController
         _logger = logger;
     }
 
-    // GET /api/Users (Accessible by HR and Team Lead)
+    // (Accessible by HR and Team Lead)
     [HttpGet]
     [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
     {
         var users = await _context.Users
+            .AsNoTracking()
             .Select(u => new
             {
                 u.Id,
                 u.FullName,
                 u.Email,
-                u.Department,
+                DepartmentId = u.DepartmentId,
+                DepartmentName = u.Department != null ? u.Department.Name : null,
+                TeamLeadId = u.TeamLeadId,
+                TeamLeadName = u.TeamLead != null ? u.TeamLead.FullName : null,
                 u.Designation,
                 Role = u.Role.ToString(),
                 u.LeaveBalance
@@ -42,7 +46,7 @@ public class UsersController : BaseController
         return Ok(users);
     }
 
-    // POST /api/Users/provision (HR Only)
+    // (HR Only)
     [HttpPost("provision")]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> ProvisionUser(
@@ -68,7 +72,8 @@ public class UsersController : BaseController
             FullName = dto.FullName,
             Email = dto.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(defaultPassword),
-            Department = dto.Department,
+            DepartmentId = dto.DepartmentId, 
+            TeamLeadId = dto.TeamLeadId,       
             Designation = dto.Designation,
             Role = Enum.TryParse<UserRole>(dto.Role, true, out var role) ? role : UserRole.Employee,
             LeaveBalance = 20,
@@ -114,6 +119,8 @@ public class UsersController : BaseController
             {
                 userId = newUser.Id,
                 email = newUser.Email,
+                departmentId = newUser.DepartmentId,
+                teamLeadId = newUser.TeamLeadId,
                 defaultPassword,
                 resetToken
             }

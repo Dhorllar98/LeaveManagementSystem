@@ -64,7 +64,7 @@ public class LeaveRequestsController : ControllerBase
             Id = l.Id,
             EmployeeId = l.EmployeeId,
             EmployeeName = l.Employee?.FullName ?? "N/A",
-            Department = string.IsNullOrWhiteSpace(l.Employee?.Department) ? "Unassigned" : l.Employee!.Department,
+            Department = l.Employee?.Department?.Name ?? "Unassigned", 
             LeaveTypeId = l.LeaveTypeId,
             LeaveTypeName = l.LeaveType?.Name ?? "N/A",
             LeaveType = l.LeaveType != null ? new LeaveTypeSummaryDto
@@ -116,7 +116,7 @@ public class LeaveRequestsController : ControllerBase
             Id = l.Id,
             EmployeeId = l.EmployeeId,
             EmployeeName = l.Employee?.FullName ?? "N/A",
-            Department = string.IsNullOrWhiteSpace(l.Employee?.Department) ? "Unassigned" : l.Employee!.Department,
+            Department = l.Employee?.Department?.Name ?? "Unassigned",
             LeaveTypeId = l.LeaveTypeId,
             LeaveTypeName = l.LeaveType?.Name ?? "N/A",
             LeaveType = l.LeaveType != null ? new LeaveTypeSummaryDto
@@ -160,7 +160,7 @@ public class LeaveRequestsController : ControllerBase
             Id = leave.Id,
             EmployeeId = leave.EmployeeId,
             EmployeeName = leave.Employee?.FullName ?? "N/A",
-            Department = string.IsNullOrWhiteSpace(leave.Employee?.Department) ? "Unassigned" : leave.Employee!.Department,
+            Department = leave.Employee?.Department?.Name ?? "Unassigned", 
             LeaveTypeId = leave.LeaveTypeId,
             LeaveTypeName = leave.LeaveType?.Name ?? "N/A",
             LeaveType = leave.LeaveType != null ? new LeaveTypeSummaryDto
