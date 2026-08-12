@@ -43,11 +43,12 @@ public class LeaveRequestsController : ControllerBase
         return userId;
     }
 
-    // GET ALL / PAGINATED & FILTERED LEAVE REQUESTS
+    // GET MY LEAVE REQUESTS 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
     {
-        if (!User.IsInRole("Manager") && !User.IsInRole("Admin"))
+        // Standard employees can only fetch their own requests
+        if (!User.IsInRole("TeamLead") && !User.IsInRole("HR"))
         {
             query.EmployeeId = GetCurrentUserId();
         }
@@ -60,31 +61,21 @@ public class LeaveRequestsController : ControllerBase
             query.PageSize,
             cancellationToken);
 
-        var formattedItems = items.Select(l => new
+        var formattedItems = items.Select(l => new LeaveRequestSummaryDto
         {
-            id = l.Id,
-            employeeId = l.EmployeeId,
-            employeeName = l.Employee?.FullName ?? "N/A",
-            department = !string.IsNullOrWhiteSpace(l.Employee?.Department) ? l.Employee.Department : "Unassigned",
-            leaveTypeId = l.LeaveTypeId,
-
-            leaveType = l.LeaveType?.Name ?? "N/A",
-            leaveTypeName = l.LeaveType?.Name ?? "N/A",
-            type = l.LeaveType?.Name ?? "N/A",
-
-            leaveTypeDetails = new
-            {
-                id = l.LeaveTypeId,
-                name = l.LeaveType?.Name ?? "N/A"
-            },
-
-            startDate = l.StartDate,
-            endDate = l.EndDate,
-            numberOfDays = l.NumberOfDays,
-            reason = l.Reason,
-            status = l.Status.ToString(),
-            createdAt = l.CreatedAt,
-            managerComments = l.ManagerComments
+            Id = l.Id,
+            EmployeeId = l.EmployeeId,
+            EmployeeName = l.Employee?.FullName ?? "N/A",
+            Department = string.IsNullOrWhiteSpace(l.Employee?.Department) ? "Unassigned" : l.Employee!.Department,
+            LeaveTypeId = l.LeaveTypeId,
+            LeaveTypeName = l.LeaveType?.Name ?? "N/A",
+            StartDate = l.StartDate,
+            EndDate = l.EndDate,
+            NumberOfDays = l.NumberOfDays,
+            Reason = l.Reason ?? string.Empty,
+            Status = l.Status.ToString(),
+            ManagerComments = l.ManagerComments,
+            CreatedAt = l.CreatedAt
         });
 
         return Ok(new
@@ -102,38 +93,78 @@ public class LeaveRequestsController : ControllerBase
         });
     }
 
+    // GET /api/LeaveRequests/all (HR DEDICATED TOTAL REQUESTS VIEW)
+    [HttpGet("all")]
+    [Authorize(Roles = "HR")]
+    public async Task<IActionResult> GetTotalRequestsForHR([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
+    {
+        query.EmployeeId = null;
+
+        var (items, totalCount) = await _leaveRepository.GetPagedAsync(
+            query.EmployeeId,
+            query.Status,
+            query.SearchTerm,
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        var formattedItems = items.Select(l => new LeaveRequestSummaryDto
+        {
+            Id = l.Id,
+            EmployeeId = l.EmployeeId,
+            EmployeeName = l.Employee?.FullName ?? "N/A",
+            Department = string.IsNullOrWhiteSpace(l.Employee?.Department) ? "Unassigned" : l.Employee!.Department,
+            LeaveTypeId = l.LeaveTypeId,
+            LeaveTypeName = l.LeaveType?.Name ?? "N/A",
+            StartDate = l.StartDate,
+            EndDate = l.EndDate,
+            NumberOfDays = l.NumberOfDays,
+            Reason = l.Reason ?? string.Empty,
+            Status = l.Status.ToString(),
+            ManagerComments = l.ManagerComments,
+            CreatedAt = l.CreatedAt
+        });
+
+        return Ok(new
+        {
+            success = true,
+            message = "Total company leave requests retrieved for HR overview.",
+            totalCount,
+            data = formattedItems,
+            pagination = new
+            {
+                totalCount,
+                query.PageNumber,
+                query.PageSize,
+                totalPages = (int)Math.Ceiling((double)totalCount / query.PageSize)
+            }
+        });
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
         if (leave == null) return NotFound(new { message = "Leave request not found." });
 
-        return Ok(new
+        var summary = new LeaveRequestSummaryDto
         {
-            id = leave.Id,
-            employeeId = leave.EmployeeId,
-            employeeName = leave.Employee?.FullName ?? "N/A",
-            department = !string.IsNullOrWhiteSpace(leave.Employee?.Department) ? leave.Employee.Department : "Unassigned",
-            leaveTypeId = leave.LeaveTypeId,
+            Id = leave.Id,
+            EmployeeId = leave.EmployeeId,
+            EmployeeName = leave.Employee?.FullName ?? "N/A",
+            Department = string.IsNullOrWhiteSpace(leave.Employee?.Department) ? "Unassigned" : leave.Employee!.Department,
+            LeaveTypeId = leave.LeaveTypeId,
+            LeaveTypeName = leave.LeaveType?.Name ?? "N/A",
+            StartDate = leave.StartDate,
+            EndDate = leave.EndDate,
+            NumberOfDays = leave.NumberOfDays,
+            Reason = leave.Reason ?? string.Empty,
+            Status = leave.Status.ToString(),
+            ManagerComments = leave.ManagerComments,
+            CreatedAt = leave.CreatedAt
+        };
 
-            leaveType = leave.LeaveType?.Name ?? "N/A",
-            leaveTypeName = leave.LeaveType?.Name ?? "N/A",
-            type = leave.LeaveType?.Name ?? "N/A",
-
-            leaveTypeDetails = new
-            {
-                id = leave.LeaveTypeId,
-                name = leave.LeaveType?.Name ?? "N/A"
-            },
-
-            startDate = leave.StartDate,
-            endDate = leave.EndDate,
-            numberOfDays = leave.NumberOfDays,
-            reason = leave.Reason,
-            status = leave.Status.ToString(),
-            createdAt = leave.CreatedAt,
-            managerComments = leave.ManagerComments
-        });
+        return Ok(summary);
     }
 
     [HttpPost]
@@ -236,7 +267,7 @@ public class LeaveRequestsController : ControllerBase
 
         var currentUserId = GetCurrentUserId();
 
-        if (leave.EmployeeId != currentUserId && !User.IsInRole("Manager") && !User.IsInRole("Admin"))
+        if (leave.EmployeeId != currentUserId && !User.IsInRole("TeamLead") && !User.IsInRole("HR"))
         {
             return Forbid();
         }
@@ -253,7 +284,7 @@ public class LeaveRequestsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/approve")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> ApproveLeave(Guid id, [FromBody] ManagerActionDto dto, CancellationToken cancellationToken)
     {
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
@@ -263,7 +294,7 @@ public class LeaveRequestsController : ControllerBase
 
         if (leave.EmployeeId == currentUserId)
         {
-            return BadRequest(new { message = "You cannot approve your own leave request. Another manager must review this request." });
+            return BadRequest(new { message = "You cannot approve your own leave request." });
         }
 
         if (leave.Status != LeaveStatus.Pending)
@@ -274,7 +305,6 @@ public class LeaveRequestsController : ControllerBase
         var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
         if (applicant != null)
         {
-            // STRICT CHECK: Reject approval if leave balance will drop below 0
             if (applicant.LeaveBalance < leave.NumberOfDays)
             {
                 return BadRequest(new
@@ -298,7 +328,7 @@ public class LeaveRequestsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/reject")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> RejectLeave(Guid id, [FromBody] ManagerActionDto dto, CancellationToken cancellationToken)
     {
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
@@ -308,7 +338,7 @@ public class LeaveRequestsController : ControllerBase
 
         if (leave.EmployeeId == currentUserId)
         {
-            return BadRequest(new { message = "You cannot reject your own leave request. Another manager must process this request." });
+            return BadRequest(new { message = "You cannot reject your own leave request." });
         }
 
         if (leave.Status != LeaveStatus.Pending)

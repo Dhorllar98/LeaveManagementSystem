@@ -42,12 +42,12 @@ public class DashboardController : BaseController
         return Ok(dto);
     }
 
-    //GET /api/Dashboard/admin-stats (Admin / Manager Dashboard)
+    // GET /api/Dashboard/admin-stats (HR & Team Lead Dashboard)
     [HttpGet("admin-stats")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR,TeamLead")]
     public async Task<ActionResult<AdminDashboardResponseDto>> GetAdminDashboardStats(CancellationToken cancellationToken)
     {
-        var allLeaves = await _leaveRepository.GetAllAsync(cancellationToken);
+        var allLeaves = (await _leaveRepository.GetAllAsync(cancellationToken)).ToList();
         var allUsers = await _userRepository.GetAllAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
@@ -55,6 +55,7 @@ public class DashboardController : BaseController
         var dto = new AdminDashboardResponseDto
         {
             TotalEmployees = allUsers.Count(),
+            TotalRequestsCount = allLeaves.Count,
             PendingApprovalsCount = allLeaves.Count(l => l.Status == LeaveStatus.Pending),
             ApprovedRequestsCount = allLeaves.Count(l => l.Status == LeaveStatus.Approved),
             RejectedRequestsCount = allLeaves.Count(l => l.Status == LeaveStatus.Rejected),

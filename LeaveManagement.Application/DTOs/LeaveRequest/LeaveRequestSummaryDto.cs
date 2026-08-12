@@ -1,12 +1,20 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace LeaveManagement.Application.DTOs.LeaveRequest;
 
-namespace LeaveManagement.Application.DTOs.LeaveRequest
+public class LeaveRequestSummaryDto
 {
-    internal class LeaveRequestSummaryDto
-    {
-    }
+    public Guid Id { get; set; }
+    public Guid EmployeeId { get; set; }
+    public string EmployeeName { get; set; } = string.Empty;
+    public string Department { get; set; } = string.Empty;
+
+    public Guid LeaveTypeId { get; set; }
+    public string LeaveTypeName { get; set; } = string.Empty;
+
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+    public int NumberOfDays { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? ManagerComments { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

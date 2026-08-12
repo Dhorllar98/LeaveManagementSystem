@@ -12,6 +12,7 @@ public class DashboardResponseDto
 public class AdminDashboardResponseDto
 {
     public int TotalEmployees { get; set; }
+    public int TotalRequestsCount { get; set; }
     public int PendingApprovalsCount { get; set; }
     public int ApprovedRequestsCount { get; set; }
     public int RejectedRequestsCount { get; set; }
