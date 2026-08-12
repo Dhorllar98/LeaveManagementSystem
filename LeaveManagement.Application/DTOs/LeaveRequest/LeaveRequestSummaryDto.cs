@@ -1,5 +1,11 @@
 ﻿namespace LeaveManagement.Application.DTOs.LeaveRequest;
 
+public class LeaveTypeSummaryDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
 public class LeaveRequestSummaryDto
 {
     public Guid Id { get; set; }
@@ -9,6 +15,8 @@ public class LeaveRequestSummaryDto
 
     public Guid LeaveTypeId { get; set; }
     public string LeaveTypeName { get; set; } = string.Empty;
+
+    public LeaveTypeSummaryDto? LeaveType { get; set; }
 
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }

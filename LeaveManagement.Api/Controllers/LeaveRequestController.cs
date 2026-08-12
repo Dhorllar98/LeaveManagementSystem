@@ -1,7 +1,6 @@
 ﻿using LeaveManagement.Application.Common.Helpers;
 using LeaveManagement.Application.DTOs.Leave;
 using LeaveManagement.Application.DTOs.LeaveRequest;
-using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
@@ -47,7 +46,6 @@ public class LeaveRequestsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
     {
-        // Standard employees can only fetch their own requests
         if (!User.IsInRole("TeamLead") && !User.IsInRole("HR"))
         {
             query.EmployeeId = GetCurrentUserId();
@@ -69,6 +67,11 @@ public class LeaveRequestsController : ControllerBase
             Department = string.IsNullOrWhiteSpace(l.Employee?.Department) ? "Unassigned" : l.Employee!.Department,
             LeaveTypeId = l.LeaveTypeId,
             LeaveTypeName = l.LeaveType?.Name ?? "N/A",
+            LeaveType = l.LeaveType != null ? new LeaveTypeSummaryDto
+            {
+                Id = l.LeaveType.Id,
+                Name = l.LeaveType.Name
+            } : null,
             StartDate = l.StartDate,
             EndDate = l.EndDate,
             NumberOfDays = l.NumberOfDays,
@@ -93,7 +96,7 @@ public class LeaveRequestsController : ControllerBase
         });
     }
 
-    // GET /api/LeaveRequests/all (HR DEDICATED TOTAL REQUESTS VIEW)
+    // (HR DEDICATED TOTAL REQUESTS VIEW)
     [HttpGet("all")]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> GetTotalRequestsForHR([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
@@ -116,6 +119,11 @@ public class LeaveRequestsController : ControllerBase
             Department = string.IsNullOrWhiteSpace(l.Employee?.Department) ? "Unassigned" : l.Employee!.Department,
             LeaveTypeId = l.LeaveTypeId,
             LeaveTypeName = l.LeaveType?.Name ?? "N/A",
+            LeaveType = l.LeaveType != null ? new LeaveTypeSummaryDto
+            {
+                Id = l.LeaveType.Id,
+                Name = l.LeaveType.Name
+            } : null,
             StartDate = l.StartDate,
             EndDate = l.EndDate,
             NumberOfDays = l.NumberOfDays,
@@ -155,6 +163,11 @@ public class LeaveRequestsController : ControllerBase
             Department = string.IsNullOrWhiteSpace(leave.Employee?.Department) ? "Unassigned" : leave.Employee!.Department,
             LeaveTypeId = leave.LeaveTypeId,
             LeaveTypeName = leave.LeaveType?.Name ?? "N/A",
+            LeaveType = leave.LeaveType != null ? new LeaveTypeSummaryDto
+            {
+                Id = leave.LeaveType.Id,
+                Name = leave.LeaveType.Name
+            } : null,
             StartDate = leave.StartDate,
             EndDate = leave.EndDate,
             NumberOfDays = leave.NumberOfDays,
