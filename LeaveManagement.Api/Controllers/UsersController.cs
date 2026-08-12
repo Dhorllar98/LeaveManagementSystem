@@ -13,14 +13,17 @@ namespace LeaveManagement.Api.Controllers;
 public class UsersController : BaseController
 {
     private readonly AppDbContext _context;
+    private readonly ILogger<UsersController> _logger; 
 
-    public UsersController(AppDbContext context)
+    public UsersController(AppDbContext context, ILogger<UsersController> logger)
     {
         _context = context;
+        _logger = logger;
     }
 
+    // GET /api/Users (Accessible by HR and Team Lead)
     [HttpGet]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
     {
         var users = await _context.Users
@@ -39,8 +42,9 @@ public class UsersController : BaseController
         return Ok(users);
     }
 
+    // POST /api/Users/provision (HR Only)
     [HttpPost("provision")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR")]
     public async Task<IActionResult> ProvisionUser(
         [FromBody] AdminCreateUserDto dto,
         [FromServices] IEmailService emailService,
@@ -78,13 +82,13 @@ public class UsersController : BaseController
 
         string baseUrl = !string.IsNullOrWhiteSpace(dto.ClientResetUrl)
             ? dto.ClientResetUrl
-            : "https://your-frontend-app.com/reset-password";
+            : "https://new-leave-management-system-qszg.vercel.app/reset-password";
 
         string resetLink = $"{baseUrl}?email={Uri.EscapeDataString(dto.Email)}&token={resetToken}";
 
         string emailBody = $@"
             <h3>Welcome to the Leave Management System, {dto.FullName}!</h3>
-            <p>An account has been created for you by your Administrator.</p>
+            <p>An account has been created for you by HR.</p>
             <p><strong>Temporary Password:</strong> <code>{defaultPassword}</code></p>
             <p>Please click the link below to set your new password:</p>
             <p><a href='{resetLink}' style='background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block;'>Set New Password</a></p>";
@@ -94,9 +98,11 @@ public class UsersController : BaseController
             try
             {
                 await emailService.SendEmailAsync(dto.Email, "Account Created - Set Your Password", emailBody);
+                _logger.LogInformation("Provisioning email sent successfully to {Email}", dto.Email);
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Failed to send account provisioning email to {Email}", dto.Email);
             }
         });
 
