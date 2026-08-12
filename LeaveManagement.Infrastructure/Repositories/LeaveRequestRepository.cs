@@ -24,8 +24,9 @@ public class LeaveRequestRepository : ILeaveRequestRepository
         CancellationToken cancellationToken = default)
     {
         var query = _context.LeaveRequests
-            .Include(l => l.LeaveType)  
-            .Include(l => l.Employee)  
+            .Include(l => l.LeaveType)
+            .Include(l => l.Employee)
+                .ThenInclude(e => e.Department)
             .AsNoTracking()
             .AsQueryable();
 
@@ -62,6 +63,7 @@ public class LeaveRequestRepository : ILeaveRequestRepository
         return await _context.LeaveRequests
             .Include(l => l.LeaveType)
             .Include(l => l.Employee)
+                .ThenInclude(e => e.Department)
             .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
     }
 
@@ -70,6 +72,7 @@ public class LeaveRequestRepository : ILeaveRequestRepository
         return await _context.LeaveRequests
             .Include(l => l.LeaveType)
             .Include(l => l.Employee)
+                .ThenInclude(e => e.Department)
             .Where(l => l.EmployeeId == employeeId)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -80,6 +83,7 @@ public class LeaveRequestRepository : ILeaveRequestRepository
         return await _context.LeaveRequests
             .Include(l => l.LeaveType)
             .Include(l => l.Employee)
+                .ThenInclude(e => e.Department)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(cancellationToken);
     }
