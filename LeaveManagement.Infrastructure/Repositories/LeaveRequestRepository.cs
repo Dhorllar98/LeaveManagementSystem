@@ -15,33 +15,6 @@ public class LeaveRequestRepository : ILeaveRequestRepository
         _context = context;
     }
 
-    public async Task<IEnumerable<LeaveRequest>> GetAllAsync(CancellationToken cancellationToken = default)
-    {
-        return await _context.LeaveRequests
-            .Include(lr => lr.Employee)
-            .Include(lr => lr.LeaveType)
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task<LeaveRequest?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        return await _context.LeaveRequests
-            .Include(lr => lr.Employee)
-            .Include(lr => lr.LeaveType)
-            .FirstOrDefaultAsync(lr => lr.Id == id, cancellationToken);
-    }
-
-    public async Task<IEnumerable<LeaveRequest>> GetByEmployeeIdAsync(Guid employeeId, CancellationToken cancellationToken = default)
-    {
-        return await _context.LeaveRequests
-            .Where(lr => lr.EmployeeId == employeeId)
-            .Include(lr => lr.Employee)
-            .Include(lr => lr.LeaveType)
-            .ToListAsync(cancellationToken);
-    }
-
-    //PAGINATION, FILTERING & SEARCH IMPLEMENTATION (To support the Angular frontend's server-side pagination,
-    //                  status filtering, RxJS search, and editing/deleting)
     public async Task<(IEnumerable<LeaveRequest> Items, int TotalCount)> GetPagedAsync(
         Guid? employeeId,
         string? status,
@@ -50,36 +23,33 @@ public class LeaveRequestRepository : ILeaveRequestRepository
         int pageSize,
         CancellationToken cancellationToken = default)
     {
-        var baseQuery = _context.LeaveRequests
-            .Include(lr => lr.Employee)
-            .Include(lr => lr.LeaveType)
-            .AsNoTracking();
+        var query = _context.LeaveRequests
+            .Include(l => l.LeaveType)  
+            .Include(l => l.Employee)  
+            .AsNoTracking()
+            .AsQueryable();
 
-        // 1. Employee Filter
-        if (employeeId.HasValue)
+        if (employeeId.HasValue && employeeId.Value != Guid.Empty)
         {
-            baseQuery = baseQuery.Where(lr => lr.EmployeeId == employeeId.Value);
+            query = query.Where(l => l.EmployeeId == employeeId.Value);
         }
 
-        // 2. Status Filter
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<LeaveStatus>(status, true, out var parsedStatus))
         {
-            baseQuery = baseQuery.Where(lr => lr.Status == parsedStatus);
+            query = query.Where(l => l.Status == parsedStatus);
         }
 
-        // 3. Search Term (Reason or Employee Full Name)
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            var term = searchTerm.ToLower();
-            baseQuery = baseQuery.Where(lr =>
-                (lr.Reason != null && lr.Reason.ToLower().Contains(term)) ||
-                (lr.Employee != null && lr.Employee.FullName != null && lr.Employee.FullName.ToLower().Contains(term)));
+            query = query.Where(l =>
+                (l.Employee != null && l.Employee.FullName.ToLower().Contains(searchTerm.ToLower())) ||
+                (l.Reason != null && l.Reason.ToLower().Contains(searchTerm.ToLower())));
         }
 
-        var totalCount = await baseQuery.CountAsync(cancellationToken);
+        int totalCount = await query.CountAsync(cancellationToken);
 
-        var items = await baseQuery
-            .OrderByDescending(lr => lr.CreatedAt)
+        var items = await query
+            .OrderByDescending(l => l.CreatedAt)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -87,18 +57,45 @@ public class LeaveRequestRepository : ILeaveRequestRepository
         return (items, totalCount);
     }
 
-    public async Task AddAsync(LeaveRequest leaveRequest, CancellationToken cancellationToken = default)
+    public async Task<LeaveRequest?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await _context.LeaveRequests.AddAsync(leaveRequest, cancellationToken);
+        return await _context.LeaveRequests
+            .Include(l => l.LeaveType)
+            .Include(l => l.Employee)
+            .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
     }
 
-    public void Update(LeaveRequest leaveRequest)
+    public async Task<IEnumerable<LeaveRequest>> GetByEmployeeIdAsync(Guid employeeId, CancellationToken cancellationToken = default)
     {
-        _context.LeaveRequests.Update(leaveRequest);
+        return await _context.LeaveRequests
+            .Include(l => l.LeaveType)
+            .Include(l => l.Employee)
+            .Where(l => l.EmployeeId == employeeId)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToListAsync(cancellationToken);
     }
 
-    public void Delete(LeaveRequest leaveRequest)
+    public async Task<IEnumerable<LeaveRequest>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        _context.LeaveRequests.Remove(leaveRequest);
+        return await _context.LeaveRequests
+            .Include(l => l.LeaveType)
+            .Include(l => l.Employee)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task AddAsync(LeaveRequest entity, CancellationToken cancellationToken = default)
+    {
+        await _context.LeaveRequests.AddAsync(entity, cancellationToken);
+    }
+
+    public void Update(LeaveRequest entity)
+    {
+        _context.LeaveRequests.Update(entity);
+    }
+
+    public void Delete(LeaveRequest entity)
+    {
+        _context.LeaveRequests.Remove(entity);
     }
 }
