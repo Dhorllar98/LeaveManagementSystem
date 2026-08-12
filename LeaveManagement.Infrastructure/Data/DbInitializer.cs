@@ -10,6 +10,9 @@ public static class DbInitializer
     {
         await context.Database.MigrateAsync();
 
+        // ⚠️ TEMPORARY: Force wipe old user & request data on Render deployment
+        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"LeaveRequests\", \"Users\" RESTART IDENTITY CASCADE;");
+
         if (!await context.LeaveTypes.AnyAsync())
         {
             var leaveTypes = new List<LeaveType>
@@ -53,7 +56,7 @@ public static class DbInitializer
                     FullName = "Admin HR Manager",
                     Email = "hr@admin.com",
                     PasswordHash = defaultPasswordHash,
-                    Role = UserRole.HR, 
+                    Role = UserRole.HR,
                     Department = "Human Resources",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
@@ -66,7 +69,7 @@ public static class DbInitializer
                     FullName = "Sarah Jenkins",
                     Email = "teamlead@company.com",
                     PasswordHash = defaultPasswordHash,
-                    Role = UserRole.TeamLead, 
+                    Role = UserRole.TeamLead,
                     Department = "Engineering",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
