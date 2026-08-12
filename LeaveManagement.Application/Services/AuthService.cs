@@ -52,7 +52,7 @@ public class AuthService : IAuthService
             Email = request.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Role = request.Role,
-            Department = request.Department,
+            DepartmentId = request.DepartmentId,
             Designation = request.Designation,
             LeaveBalance = 20
         };
@@ -60,22 +60,26 @@ public class AuthService : IAuthService
         await _userRepository.AddAsync(user, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var token = _jwtTokenGenerator.GenerateAccessToken(user);
+        // Fetch freshly created user to load Department navigation property
+        var createdUser = await _userRepository.GetByIdAsync(user.Id, cancellationToken) ?? user;
+
+        var token = _jwtTokenGenerator.GenerateAccessToken(createdUser);
         var refreshToken = _jwtTokenGenerator.GenerateRefreshToken();
 
-        user.RefreshToken = refreshToken;
-        user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-        _userRepository.Update(user);
+        createdUser.RefreshToken = refreshToken;
+        createdUser.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+
+        _userRepository.Update(createdUser);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return ApiResponse<AuthResponseDto>.SuccessResponse(new AuthResponseDto
         {
-            UserId = user.Id,
-            FullName = user.FullName,
-            Email = user.Email,
-            Department = user.Department,
-            Designation = user.Designation,
-            Role = user.Role,
+            UserId = createdUser.Id,
+            FullName = createdUser.FullName,
+            Email = createdUser.Email,
+            Department = createdUser.Department?.Name ?? string.Empty,
+            Designation = createdUser.Designation,
+            Role = createdUser.Role,
             Token = token,
             RefreshToken = refreshToken,
             Expiration = DateTime.UtcNow.AddMinutes(30)
@@ -110,7 +114,7 @@ public class AuthService : IAuthService
             UserId = user.Id,
             FullName = user.FullName,
             Email = user.Email,
-            Department = user.Department,
+            Department = user.Department?.Name ?? string.Empty,
             Designation = user.Designation,
             Role = user.Role,
             Token = token,
@@ -145,7 +149,7 @@ public class AuthService : IAuthService
             UserId = user.Id,
             FullName = user.FullName,
             Email = user.Email,
-            Department = user.Department,
+            Department = user.Department?.Name ?? string.Empty,
             Designation = user.Designation,
             Role = user.Role,
             Token = newAccessToken,

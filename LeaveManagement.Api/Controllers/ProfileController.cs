@@ -35,7 +35,7 @@ public class ProfileController : BaseController
                 fullName = user.FullName,
                 email = user.Email,
                 role = user.Role.ToString(),
-                department = user.Department,
+                department = user.Department?.Name ?? "Unassigned",
                 designation = user.Designation,
                 leaveBalance = user.LeaveBalance,
                 createdAt = user.CreatedAt
@@ -53,7 +53,12 @@ public class ProfileController : BaseController
         if (user == null) return NotFound();
 
         user.FullName = string.IsNullOrWhiteSpace(dto.FullName) ? user.FullName : dto.FullName;
-        user.Department = dto.Department;
+
+        if (dto.DepartmentId.HasValue)
+        {
+            user.DepartmentId = dto.DepartmentId.Value;
+        }
+
         user.Designation = dto.Designation;
         user.UpdatedAt = DateTime.UtcNow;
 
@@ -70,7 +75,7 @@ public class ProfileController : BaseController
                 fullName = user.FullName,
                 email = user.Email,
                 role = user.Role.ToString(),
-                department = user.Department,
+                department = user.Department?.Name ?? "Unassigned",
                 designation = user.Designation,
                 leaveBalance = user.LeaveBalance,
                 createdAt = user.CreatedAt

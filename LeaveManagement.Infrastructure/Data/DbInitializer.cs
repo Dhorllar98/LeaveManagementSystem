@@ -10,7 +10,7 @@ public static class DbInitializer
     {
         await context.Database.MigrateAsync();
 
-
+        // 1. Seed Leave Types
         if (!await context.LeaveTypes.AnyAsync())
         {
             var leaveTypes = new List<LeaveType>
@@ -39,8 +39,31 @@ public static class DbInitializer
             };
 
             await context.LeaveTypes.AddRangeAsync(leaveTypes);
+            await context.SaveChangesAsync();
         }
 
+        // 2. Seed Default Departments
+        Department? hrDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Human Resources");
+        Department? engDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Engineering");
+
+        if (hrDept == null || engDept == null)
+        {
+            if (hrDept == null)
+            {
+                hrDept = new Department { Id = Guid.NewGuid(), Name = "Human Resources", CreatedAt = DateTime.UtcNow };
+                await context.Departments.AddAsync(hrDept);
+            }
+
+            if (engDept == null)
+            {
+                engDept = new Department { Id = Guid.NewGuid(), Name = "Engineering", CreatedAt = DateTime.UtcNow };
+                await context.Departments.AddAsync(engDept);
+            }
+
+            await context.SaveChangesAsync();
+        }
+
+        // 3. Seed Default Users
         if (!await context.Users.AnyAsync())
         {
             string defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Passw0rd123!");
@@ -55,7 +78,8 @@ public static class DbInitializer
                     Email = "hr@admin.com",
                     PasswordHash = defaultPasswordHash,
                     Role = UserRole.HR,
-                    Department = "Human Resources",
+                    DepartmentId = hrDept.Id, 
+                    Designation = "HR Manager",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
                 },
@@ -68,7 +92,8 @@ public static class DbInitializer
                     Email = "teamlead@company.com",
                     PasswordHash = defaultPasswordHash,
                     Role = UserRole.TeamLead,
-                    Department = "Engineering",
+                    DepartmentId = engDept.Id, 
+                    Designation = "Lead Engineer",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
                 },
@@ -81,15 +106,15 @@ public static class DbInitializer
                     Email = "john.doe@user.com",
                     PasswordHash = defaultPasswordHash,
                     Role = UserRole.Employee,
-                    Department = "Engineering",
+                    DepartmentId = engDept.Id, 
+                    Designation = "Backend Engineer",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
                 }
             };
 
             await context.Users.AddRangeAsync(defaultUsers);
+            await context.SaveChangesAsync();
         }
-
-        await context.SaveChangesAsync();
     }
 }

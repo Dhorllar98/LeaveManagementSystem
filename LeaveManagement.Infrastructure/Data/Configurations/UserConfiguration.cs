@@ -34,9 +34,20 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.LeaveBalance)
             .HasDefaultValue(20);
 
+
         builder.HasMany(u => u.LeaveRequests)
             .WithOne(l => l.Employee)
             .HasForeignKey(l => l.EmployeeId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(u => u.TeamLead)
+            .WithMany(u => u.Subordinates)
+            .HasForeignKey(u => u.TeamLeadId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(u => u.Department)
+            .WithMany(d => d.Employees)
+            .HasForeignKey(u => u.DepartmentId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

@@ -7,7 +7,6 @@ using LeaveManagement.Infrastructure.Authentication;
 using LeaveManagement.Infrastructure.Data;
 using LeaveManagement.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,20 +17,13 @@ builder.Configuration
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false)
     .AddEnvironmentVariables();
 
-// 1. Presentation & API Services
+// 1. Presentation & API Services (Controllers, JSON options, Swagger)
 builder.Services.AddPresentationServices(builder.Configuration);
 
-// Configure Controllers to ignore object reference cycles globally
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-    });
-
-// 2. Application Layer Services & Validators
+// 2. Application Layer Services, Validators & Department logic
 builder.Services.AddApplicationServices();
 
-// 3. Infrastructure Layer (Data, Repositories, etc.)
+// 3. Infrastructure Layer (Data, Repositories, DbContext)
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IEmailService, EmailService>();

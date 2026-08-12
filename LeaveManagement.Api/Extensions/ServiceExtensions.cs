@@ -3,7 +3,6 @@ using LeaveManagement.Application.DTOs.Auth;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Application.Services;
 using LeaveManagement.Application.Validators;
-using LeaveManagement.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -20,6 +19,7 @@ public static class ServiceExtensions
             .AddJsonOptions(options =>
             {
                 options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
             });
 
         services.AddEndpointsApiExplorer();
@@ -53,6 +53,8 @@ public static class ServiceExtensions
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IValidator<RegisterRequestDto>, RegisterRequestValidator>();
         services.AddScoped<IValidator<LoginRequestDto>, LoginRequestValidator>();
+        services.AddScoped<IDepartmentService, DepartmentService>();
+
         return services;
     }
 

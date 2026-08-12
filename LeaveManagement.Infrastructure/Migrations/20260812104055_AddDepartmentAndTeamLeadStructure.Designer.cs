@@ -3,6 +3,7 @@ using System;
 using LeaveManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LeaveManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260812104055_AddDepartmentAndTeamLeadStructure")]
+    partial class AddDepartmentAndTeamLeadStructure
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,33 +24,6 @@ namespace LeaveManagement.Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("LeaveManagement.Domain.Entities.Department", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid?>("TeamLeadId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TeamLeadId");
-
-                    b.ToTable("Departments", (string)null);
-                });
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.LeaveAllocation", b =>
                 {
@@ -166,8 +142,8 @@ namespace LeaveManagement.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("DepartmentId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("Department")
+                        .HasColumnType("text");
 
                     b.Property<string>("Designation")
                         .HasColumnType("text");
@@ -206,32 +182,15 @@ namespace LeaveManagement.Infrastructure.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("integer");
 
-                    b.Property<Guid?>("TeamLeadId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DepartmentId");
-
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.HasIndex("TeamLeadId");
-
                     b.ToTable("Users", (string)null);
-                });
-
-            modelBuilder.Entity("LeaveManagement.Domain.Entities.Department", b =>
-                {
-                    b.HasOne("LeaveManagement.Domain.Entities.User", "TeamLead")
-                        .WithMany()
-                        .HasForeignKey("TeamLeadId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("TeamLead");
                 });
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.LeaveAllocation", b =>
@@ -274,31 +233,7 @@ namespace LeaveManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.User", b =>
                 {
-                    b.HasOne("LeaveManagement.Domain.Entities.Department", "Department")
-                        .WithMany("Employees")
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("LeaveManagement.Domain.Entities.User", "TeamLead")
-                        .WithMany("Subordinates")
-                        .HasForeignKey("TeamLeadId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Department");
-
-                    b.Navigation("TeamLead");
-                });
-
-            modelBuilder.Entity("LeaveManagement.Domain.Entities.Department", b =>
-                {
-                    b.Navigation("Employees");
-                });
-
-            modelBuilder.Entity("LeaveManagement.Domain.Entities.User", b =>
-                {
                     b.Navigation("LeaveRequests");
-
-                    b.Navigation("Subordinates");
                 });
 #pragma warning restore 612, 618
         }
