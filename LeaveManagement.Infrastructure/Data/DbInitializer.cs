@@ -46,16 +46,33 @@ public static class DbInitializer
 
             var defaultUsers = new List<User>
             {
+                // 1. HR Role
                 new()
                 {
                     Id = Guid.NewGuid(),
                     FullName = "Admin HR Manager",
-                    Email = "admin@admin.com",
+                    Email = "hr@admin.com",
                     PasswordHash = defaultPasswordHash,
-                    Role = UserRole.Manager,
+                    Role = UserRole.HR, 
+                    Department = "Human Resources",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
                 },
+
+                // 2. Team Lead Role
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    FullName = "Sarah Jenkins",
+                    Email = "teamlead@company.com",
+                    PasswordHash = defaultPasswordHash,
+                    Role = UserRole.TeamLead, 
+                    Department = "Engineering",
+                    LeaveBalance = 20,
+                    CreatedAt = DateTime.UtcNow
+                },
+
+                // 3. Standard Employee Role
                 new()
                 {
                     Id = Guid.NewGuid(),
@@ -63,6 +80,7 @@ public static class DbInitializer
                     Email = "john.doe@user.com",
                     PasswordHash = defaultPasswordHash,
                     Role = UserRole.Employee,
+                    Department = "Engineering",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
                 }
