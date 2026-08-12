@@ -3,5 +3,6 @@
 public enum UserRole
 {
     Employee = 1,
-    Manager = 2
+    TeamLead = 2,
+    HR = 3
 }
