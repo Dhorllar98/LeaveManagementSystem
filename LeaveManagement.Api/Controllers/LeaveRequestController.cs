@@ -6,14 +6,13 @@ using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace LeaveManagement.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class LeaveRequestsController : ControllerBase
+public class LeaveRequestsController : BaseController
 {
     private readonly ILeaveRequestRepository _leaveRepository;
     private readonly IUserRepository _userRepository;
@@ -27,19 +26,6 @@ public class LeaveRequestsController : ControllerBase
         _leaveRepository = leaveRepository;
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
-    }
-
-    private Guid GetCurrentUserId()
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                       ?? User.FindFirst("sub")?.Value;
-
-        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-        {
-            throw new UnauthorizedAccessException("User ID missing from token.");
-        }
-
-        return userId;
     }
 
     // GET MY LEAVE REQUESTS 
@@ -64,7 +50,7 @@ public class LeaveRequestsController : ControllerBase
             Id = l.Id,
             EmployeeId = l.EmployeeId,
             EmployeeName = l.Employee?.FullName ?? "N/A",
-            Department = l.Employee?.Department?.Name ?? "Unassigned", 
+            Department = l.Employee?.Department?.Name ?? "Unassigned",
             LeaveTypeId = l.LeaveTypeId,
             LeaveTypeName = l.LeaveType?.Name ?? "N/A",
             LeaveType = l.LeaveType != null ? new LeaveTypeSummaryDto
@@ -160,7 +146,7 @@ public class LeaveRequestsController : ControllerBase
             Id = leave.Id,
             EmployeeId = leave.EmployeeId,
             EmployeeName = leave.Employee?.FullName ?? "N/A",
-            Department = leave.Employee?.Department?.Name ?? "Unassigned", 
+            Department = leave.Employee?.Department?.Name ?? "Unassigned",
             LeaveTypeId = leave.LeaveTypeId,
             LeaveTypeName = leave.LeaveType?.Name ?? "N/A",
             LeaveType = leave.LeaveType != null ? new LeaveTypeSummaryDto

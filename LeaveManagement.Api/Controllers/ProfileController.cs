@@ -46,24 +46,34 @@ public class ProfileController : BaseController
     [HttpPut]
     public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto, CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty) return Unauthorized();
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == Guid.Empty) return Unauthorized();
 
-        var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
-        if (user == null) return NotFound();
+        var targetUserId = dto.UserId.HasValue && dto.UserId.Value != Guid.Empty
+            ? dto.UserId.Value
+            : currentUserId;
+
+        var user = await _userRepository.GetByIdAsync(targetUserId, cancellationToken);
+        if (user == null) return NotFound(new { success = false, message = $"User with ID '{targetUserId}' not found." });
 
         user.FullName = string.IsNullOrWhiteSpace(dto.FullName) ? user.FullName : dto.FullName;
 
-        if (dto.DepartmentId.HasValue)
+        if (dto.DepartmentId.HasValue && dto.DepartmentId.Value != Guid.Empty)
         {
             user.DepartmentId = dto.DepartmentId.Value;
         }
 
-        user.Designation = dto.Designation;
+        if (dto.Designation != null)
+        {
+            user.Designation = dto.Designation;
+        }
+
         user.UpdatedAt = DateTime.UtcNow;
 
         _userRepository.Update(user);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var updatedUser = await _userRepository.GetByIdAsync(user.Id, cancellationToken) ?? user;
 
         return Ok(new
         {
@@ -71,14 +81,14 @@ public class ProfileController : BaseController
             message = "Profile updated successfully.",
             data = new
             {
-                id = user.Id,
-                fullName = user.FullName,
-                email = user.Email,
-                role = user.Role.ToString(),
-                department = user.Department?.Name ?? "Unassigned",
-                designation = user.Designation,
-                leaveBalance = user.LeaveBalance,
-                createdAt = user.CreatedAt
+                id = updatedUser.Id,
+                fullName = updatedUser.FullName,
+                email = updatedUser.Email,
+                role = updatedUser.Role.ToString(),
+                department = updatedUser.Department?.Name ?? "Unassigned",
+                designation = updatedUser.Designation,
+                leaveBalance = updatedUser.LeaveBalance,
+                createdAt = updatedUser.CreatedAt
             }
         });
     }
