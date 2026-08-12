@@ -18,6 +18,7 @@ public class LeaveTypesController : BaseController
         _unitOfWork = unitOfWork;
     }
 
+    // (Accessible by all authenticated users)
     [HttpGet]
     public async Task<ActionResult<IEnumerable<LeaveTypeDto>>> GetLeaveTypes(CancellationToken cancellationToken)
     {
@@ -46,8 +47,9 @@ public class LeaveTypesController : BaseController
         });
     }
 
+    // (HR Only)
     [HttpPost]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR")] 
     public async Task<ActionResult<LeaveTypeDto>> CreateLeaveType(CreateLeaveTypeDto dto, CancellationToken cancellationToken)
     {
         var leaveType = new LeaveType
@@ -69,8 +71,9 @@ public class LeaveTypesController : BaseController
         return CreatedAtAction(nameof(GetLeaveType), new { id = leaveType.Id }, result);
     }
 
+    // (HR Only)
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR")] 
     public async Task<IActionResult> UpdateLeaveType(Guid id, UpdateLeaveTypeDto dto, CancellationToken cancellationToken)
     {
         var leaveType = await _repository.GetByIdAsync(id, cancellationToken);
@@ -86,8 +89,9 @@ public class LeaveTypesController : BaseController
         return NoContent();
     }
 
+    // (HR Only)
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR")] 
     public async Task<IActionResult> DeleteLeaveType(Guid id, CancellationToken cancellationToken)
     {
         var leaveType = await _repository.GetByIdAsync(id, cancellationToken);
