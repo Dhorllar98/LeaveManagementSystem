@@ -10,8 +10,6 @@ public static class DbInitializer
     {
         await context.Database.MigrateAsync();
 
-        // ⚠️ TEMPORARY: Force wipe old user & request data on Render deployment
-        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"LeaveRequests\", \"Users\" RESTART IDENTITY CASCADE;");
 
         if (!await context.LeaveTypes.AnyAsync())
         {
