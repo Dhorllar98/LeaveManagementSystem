@@ -64,7 +64,6 @@ public class DepartmentService : IDepartmentService
         department.TeamLeadId = dto.TeamLeadId;
         department.UpdatedAt = DateTime.UtcNow;
 
-        // Auto-assign the team lead to this department
         teamLead.DepartmentId = dto.DepartmentId;
 
         await _departmentRepository.UpdateAsync(department);
@@ -83,8 +82,16 @@ public class DepartmentService : IDepartmentService
             Id = d.Id,
             Name = d.Name,
             TeamLeadId = d.TeamLeadId,
-            TeamLeadName = d.TeamLead?.FullName,
+            TeamLeadName = d.TeamLead?.FullName ?? "Unassigned",
             EmployeeCount = d.Employees?.Count ?? 0,
+            Employees = d.Employees?.Select(e => new DepartmentEmployeeDto
+            {
+                Id = e.Id,
+                FullName = e.FullName,
+                Email = e.Email,
+                Designation = e.Designation ?? string.Empty,
+                Role = e.Role.ToString()
+            }).ToList() ?? new List<DepartmentEmployeeDto>(),
             CreatedAt = d.CreatedAt
         });
     }
@@ -99,8 +106,16 @@ public class DepartmentService : IDepartmentService
             Id = d.Id,
             Name = d.Name,
             TeamLeadId = d.TeamLeadId,
-            TeamLeadName = d.TeamLead?.FullName,
+            TeamLeadName = d.TeamLead?.FullName ?? "Unassigned",
             EmployeeCount = d.Employees?.Count ?? 0,
+            Employees = d.Employees?.Select(e => new DepartmentEmployeeDto
+            {
+                Id = e.Id,
+                FullName = e.FullName,
+                Email = e.Email,
+                Designation = e.Designation ?? string.Empty,
+                Role = e.Role.ToString()
+            }).ToList() ?? new List<DepartmentEmployeeDto>(),
             CreatedAt = d.CreatedAt
         };
     }
