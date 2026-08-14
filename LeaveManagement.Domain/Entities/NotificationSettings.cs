@@ -13,5 +13,6 @@ public class NotificationSetting
     // Toggle: Email Employee when their leave request is Approved or Rejected
     public bool EnableLeaveStatusUpdateEmails { get; set; } = true;
 
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow; // <-- Add this property
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
