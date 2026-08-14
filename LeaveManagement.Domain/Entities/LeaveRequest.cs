@@ -1,10 +1,14 @@
-﻿using LeaveManagement.Domain.Enums; 
+﻿using LeaveManagement.Domain.Enums;
 
 namespace LeaveManagement.Domain.Entities;
 
 public class LeaveRequest
 {
     public Guid Id { get; set; }
+
+    public Guid? OrganizationId { get; set; }
+    public Organization? Organization { get; set; }
+
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
 
@@ -16,7 +20,7 @@ public class LeaveRequest
 
     public int NumberOfDays { get; set; }
     public bool? Approved { get; set; }
-    public LeaveStatus Status { get; set; } 
+    public LeaveStatus Status { get; set; }
     public bool Cancelled { get; set; }
     public string? RequestComments { get; set; }
     public string? Reason { get; set; }

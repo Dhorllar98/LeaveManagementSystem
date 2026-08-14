@@ -1,4 +1,5 @@
-﻿using LeaveManagement.Application.DTOs.Auth;
+﻿using System.Security.Claims;
+using LeaveManagement.Application.DTOs.Auth;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
@@ -32,6 +33,8 @@ public class UsersController : BaseController
                 u.Id,
                 u.FullName,
                 u.Email,
+                u.EmployeeCode,
+                u.OrganizationId,
                 DepartmentId = u.DepartmentId,
                 DepartmentName = u.Department != null ? u.Department.Name : null,
                 TeamLeadId = u.TeamLeadId,
@@ -58,6 +61,8 @@ public class UsersController : BaseController
                 u.Id,
                 u.FullName,
                 u.Email,
+                u.EmployeeCode,
+                u.OrganizationId,
                 DepartmentId = u.DepartmentId,
                 DepartmentName = u.Department != null ? u.Department.Name : null,
                 TeamLeadId = u.TeamLeadId,
@@ -110,6 +115,7 @@ public class UsersController : BaseController
                 user.Id,
                 user.FullName,
                 user.Email,
+                user.EmployeeCode,
                 user.DepartmentId,
                 user.TeamLeadId,
                 user.Designation,
@@ -132,11 +138,34 @@ public class UsersController : BaseController
             return BadRequest(new { message = "User with this email already exists." });
         }
 
+        // 1. Fetch HR's Organization
+        var hrUserIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(hrUserIdStr, out var hrUserId))
+        {
+            return Unauthorized(new { message = "User identity invalid." });
+        }
+
+        var hrUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == hrUserId, cancellationToken);
+        if (hrUser?.OrganizationId == null)
+        {
+            return BadRequest(new { message = "HR account is not linked to any organization." });
+        }
+
+        var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
+        if (org == null)
+        {
+            return BadRequest(new { message = "Organization not found." });
+        }
+
+        // 2. Increment employee counter and generate code (e.g. SBSC-NIG-04)
+        org.LastEmployeeNumber++;
+        string formattedCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
+
         string defaultPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
         string resetToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
-                            .Replace("+", "")
-                            .Replace("/", "")
-                            .Replace("=", "");
+                            .Replace("+", "").Replace("/", "").Replace("=", "");
 
         var newUser = new User
         {
@@ -149,6 +178,8 @@ public class UsersController : BaseController
             Designation = dto.Designation,
             Role = Enum.TryParse<UserRole>(dto.Role, true, out var role) ? role : UserRole.Employee,
             LeaveBalance = 20,
+            OrganizationId = org.Id,
+            EmployeeCode = formattedCode,
             PasswordResetToken = resetToken,
             ResetTokenExpiresAt = DateTime.UtcNow.AddHours(48),
             CreatedAt = DateTime.UtcNow
@@ -166,6 +197,7 @@ public class UsersController : BaseController
         string emailBody = $@"
             <h3>Welcome to LeaveFlow, {dto.FullName}!</h3>
             <p>An account has been created for you by HR.</p>
+            <p><strong>Employee ID:</strong> {formattedCode}</p>
             <p><strong>Temporary Password:</strong> <code>{defaultPassword}</code></p>
             <p>Please click the link below to set your new password:</p>
             <p><a href='{resetLink}' style='background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block;'>Set New Password</a></p>";
@@ -190,6 +222,7 @@ public class UsersController : BaseController
             data = new
             {
                 userId = newUser.Id,
+                employeeCode = newUser.EmployeeCode,
                 email = newUser.Email,
                 departmentId = newUser.DepartmentId,
                 teamLeadId = newUser.TeamLeadId,
@@ -212,6 +245,26 @@ public class UsersController : BaseController
 
         if (!file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "Only .csv files are supported." });
+
+        var hrUserIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(hrUserIdStr, out var hrUserId))
+        {
+            return Unauthorized(new { message = "User identity invalid." });
+        }
+
+        var hrUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == hrUserId, cancellationToken);
+        if (hrUser?.OrganizationId == null)
+        {
+            return BadRequest(new { message = "HR account is not linked to any organization." });
+        }
+
+        var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
+        if (org == null)
+        {
+            return BadRequest(new { message = "Organization not found." });
+        }
 
         var departments = await _context.Departments.AsNoTracking().ToListAsync(cancellationToken);
         var existingEmails = await _context.Users.AsNoTracking().Select(u => u.Email.ToLower()).ToListAsync(cancellationToken);
@@ -263,6 +316,9 @@ public class UsersController : BaseController
                 if (matchedDept != null) deptId = matchedDept.Id;
             }
 
+            org.LastEmployeeNumber++;
+            string formattedCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
+
             string tempPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
             Enum.TryParse<UserRole>(roleStr, true, out var userRole);
 
@@ -275,6 +331,8 @@ public class UsersController : BaseController
                 Role = userRole,
                 Designation = designation,
                 DepartmentId = deptId,
+                OrganizationId = org.Id,
+                EmployeeCode = formattedCode,
                 LeaveBalance = 20,
                 CreatedAt = DateTime.UtcNow
             };
@@ -286,6 +344,7 @@ public class UsersController : BaseController
             string emailBody = $@"
                 <h3>Welcome to LeaveFlow, {fullName}!</h3>
                 <p>An account has been created for you by HR.</p>
+                <p><strong>Employee ID:</strong> {formattedCode}</p>
                 <p><strong>Temporary Password:</strong> <code>{tempPassword}</code></p>";
 
             emailTasks.Add(emailService.SendEmailAsync(email, "Welcome to LeaveFlow", emailBody));

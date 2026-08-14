@@ -10,7 +10,23 @@ public static class DbInitializer
     {
         await context.Database.MigrateAsync();
 
-        // 1. Seed Leave Types
+        // 1. Seed Default Organization (SBSC NIG)
+        var defaultOrg = await context.Organizations.FirstOrDefaultAsync(o => o.CodePrefix == "SBSC-NIG");
+        if (defaultOrg == null)
+        {
+            defaultOrg = new Organization
+            {
+                Id = Guid.NewGuid(),
+                Name = "SBSC NIG",
+                CodePrefix = "SBSC-NIG",
+                LastEmployeeNumber = 3, 
+                CreatedAt = DateTime.UtcNow
+            };
+            await context.Organizations.AddAsync(defaultOrg);
+            await context.SaveChangesAsync();
+        }
+
+        // Leave Types
         if (!await context.LeaveTypes.AnyAsync())
         {
             var leaveTypes = new List<LeaveType>
@@ -42,7 +58,7 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        // 2. Seed Default Departments
+        // Default Departments
         Department? hrDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Human Resources");
         Department? engDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Engineering");
 
@@ -60,7 +76,7 @@ public static class DbInitializer
 
         await context.SaveChangesAsync();
 
-        // 3. Update Existing Seed Users OR Add New Ones
+        // 4. Update Existing Users OR Add New Ones
         string defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Passw0rd123!");
 
         var hrUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "hr@admin.com");
@@ -71,18 +87,24 @@ public static class DbInitializer
         {
             hrUser.DepartmentId = hrDept.Id;
             hrUser.Designation = "HR Manager";
+            hrUser.OrganizationId = defaultOrg.Id;
+            hrUser.EmployeeCode = "SBSC-NIG-01";
         }
 
         if (leadUser != null)
         {
             leadUser.DepartmentId = engDept.Id;
             leadUser.Designation = "Lead Engineer";
+            leadUser.OrganizationId = defaultOrg.Id;
+            leadUser.EmployeeCode = "SBSC-NIG-02";
         }
 
         if (empUser != null)
         {
             empUser.DepartmentId = engDept.Id;
             empUser.Designation = "Backend Engineer";
+            empUser.OrganizationId = defaultOrg.Id;
+            empUser.EmployeeCode = "SBSC-NIG-03";
         }
 
         if (!await context.Users.AnyAsync())
@@ -98,6 +120,8 @@ public static class DbInitializer
                     Role = UserRole.HR,
                     DepartmentId = hrDept.Id,
                     Designation = "HR Manager",
+                    OrganizationId = defaultOrg.Id,
+                    EmployeeCode = "SBSC-NIG-01",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
                 },
@@ -110,6 +134,8 @@ public static class DbInitializer
                     Role = UserRole.TeamLead,
                     DepartmentId = engDept.Id,
                     Designation = "Lead Engineer",
+                    OrganizationId = defaultOrg.Id,
+                    EmployeeCode = "SBSC-NIG-02",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
                 },
@@ -122,6 +148,8 @@ public static class DbInitializer
                     Role = UserRole.Employee,
                     DepartmentId = engDept.Id,
                     Designation = "Backend Engineer",
+                    OrganizationId = defaultOrg.Id,
+                    EmployeeCode = "SBSC-NIG-03",
                     LeaveBalance = 20,
                     CreatedAt = DateTime.UtcNow
                 }

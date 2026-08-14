@@ -10,7 +10,9 @@ public class AppDbContext : DbContext
     }
 
     public DbSet<User> Users => Set<User>();
-    public DbSet<Department> Departments => Set<Department>(); 
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<NotificationSetting> NotificationSettings => Set<NotificationSetting>();
+    public DbSet<Department> Departments => Set<Department>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveAllocation> LeaveAllocations => Set<LeaveAllocation>();

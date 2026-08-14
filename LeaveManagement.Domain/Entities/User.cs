@@ -5,6 +5,11 @@ namespace LeaveManagement.Domain.Entities;
 public class User
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    public string? EmployeeCode { get; set; } // e.g. "SBSC-UK-01"
+    public Guid? OrganizationId { get; set; }
+    public Organization? Organization { get; set; }
+
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
@@ -21,7 +26,6 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
-
     public Guid? DepartmentId { get; set; }
     public Department? Department { get; set; }
 
@@ -29,6 +33,5 @@ public class User
     public User? TeamLead { get; set; }
 
     public ICollection<User> Subordinates { get; set; } = new List<User>();
-
     public ICollection<LeaveRequest> LeaveRequests { get; set; } = new List<LeaveRequest>();
 }
