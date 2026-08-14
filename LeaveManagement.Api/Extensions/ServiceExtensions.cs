@@ -23,16 +23,19 @@ public static class ServiceExtensions
             });
 
         services.AddEndpointsApiExplorer();
+
         services.AddSwaggerGen(c =>
         {
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
-                Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token.",
                 Name = "Authorization",
+                Type = SecuritySchemeType.Http,
+                Scheme = "bearer",
+                BearerFormat = "JWT",
                 In = ParameterLocation.Header,
-                Type = SecuritySchemeType.ApiKey,
-                Scheme = "Bearer"
+                Description = "Paste your JWT token directly below (do NOT type 'Bearer ')."
             });
+
             c.AddSecurityRequirement(new OpenApiSecurityRequirement
             {
                 {
@@ -63,26 +66,58 @@ public static class ServiceExtensions
         var jwtSettings = configuration.GetSection("JwtSettings");
         var secret = jwtSettings["Secret"];
 
-        // Defensive check: fail fast if the key wasn't injected via User Secrets or Environment Variables
         if (string.IsNullOrWhiteSpace(secret))
         {
             throw new InvalidOperationException(
-                "JWT Secret is missing! Ensure 'JwtSettings:Secret' is set in User Secrets (Development) or Environment Variables (Production).");
+                "JWT Secret is missing! Ensure 'JwtSettings:Secret' is set in User Secrets or appsettings.json.");
         }
+
+        var issuer = jwtSettings["Issuer"] ?? "LeaveManagementApi";
+        var audience = jwtSettings["Audience"] ?? "LeaveManagementClient";
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                options.RequireHttpsMetadata = false;
+                options.SaveToken = true;
+
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
+                    ValidIssuer = issuer,
+
                     ValidateAudience = true,
+                    ValidAudience = audience,
+
                     ValidateLifetime = true,
                     ValidateIssuerSigningKey = true,
-                    ValidIssuer = jwtSettings["Issuer"] ?? "LeaveManagementApi",
-                    ValidAudience = jwtSettings["Audience"] ?? "LeaveManagementClient",
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
                     ClockSkew = TimeSpan.Zero
+                };
+
+                // DIAGNOSTIC EVENTS: Catches and prints authentication failures to the Output window
+                options.Events = new JwtBearerEvents
+                {
+                    OnAuthenticationFailed = context =>
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("\n================ [JWT AUTHENTICATION FAILED] ================");
+                        Console.WriteLine($"Exception Type: {context.Exception.GetType().Name}");
+                        Console.WriteLine($"Error Message:  {context.Exception.Message}");
+                        Console.WriteLine("=============================================================\n");
+                        Console.ResetColor();
+                        return Task.CompletedTask;
+                    },
+                    OnChallenge = context =>
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("\n================ [JWT CHALLENGE TRIGGERED] ================");
+                        Console.WriteLine($"Error:             {context.Error}");
+                        Console.WriteLine($"Error Description: {context.ErrorDescription}");
+                        Console.WriteLine("===========================================================\n");
+                        Console.ResetColor();
+                        return Task.CompletedTask;
+                    }
                 };
             });
 

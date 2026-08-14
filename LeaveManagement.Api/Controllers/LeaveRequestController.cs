@@ -1,11 +1,14 @@
 ﻿using LeaveManagement.Application.Common.Helpers;
 using LeaveManagement.Application.DTOs.Leave;
 using LeaveManagement.Application.DTOs.LeaveRequest;
+using LeaveManagement.Application.Interfaces; 
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
+using LeaveManagement.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeaveManagement.Api.Controllers;
 
@@ -17,18 +20,26 @@ public class LeaveRequestsController : BaseController
     private readonly ILeaveRequestRepository _leaveRepository;
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly AppDbContext _context;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<LeaveRequestsController> _logger;
 
     public LeaveRequestsController(
         ILeaveRequestRepository leaveRepository,
         IUserRepository userRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        AppDbContext context,
+        IEmailService emailService,
+        ILogger<LeaveRequestsController> logger)
     {
         _leaveRepository = leaveRepository;
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
+        _context = context;
+        _emailService = emailService;
+        _logger = logger;
     }
 
-    // GET MY LEAVE REQUESTS 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
     {
@@ -82,11 +93,14 @@ public class LeaveRequestsController : BaseController
         });
     }
 
-    // (HR DEDICATED TOTAL REQUESTS VIEW)
+    // HR DEDICATED COMPANY OVERVIEW (Filtered by HR's OrganizationId)
     [HttpGet("all")]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> GetTotalRequestsForHR([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
     {
+        var currentHrId = GetCurrentUserId();
+        var currentHr = await _userRepository.GetByIdAsync(currentHrId, cancellationToken);
+
         query.EmployeeId = null;
 
         var (items, totalCount) = await _leaveRepository.GetPagedAsync(
@@ -96,6 +110,13 @@ public class LeaveRequestsController : BaseController
             query.PageNumber,
             query.PageSize,
             cancellationToken);
+
+        // Filter requests to HR's organization only
+        if (currentHr?.OrganizationId != null)
+        {
+            items = items.Where(l => l.Employee?.OrganizationId == currentHr.OrganizationId);
+            totalCount = items.Count();
+        }
 
         var formattedItems = items.Select(l => new LeaveRequestSummaryDto
         {
@@ -188,6 +209,7 @@ public class LeaveRequestsController : BaseController
         {
             Id = Guid.NewGuid(),
             EmployeeId = currentUserId,
+            OrganizationId = applicant?.OrganizationId,
             LeaveTypeId = dto.LeaveTypeId,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
@@ -199,6 +221,48 @@ public class LeaveRequestsController : BaseController
 
         await _leaveRepository.AddAsync(leaveRequest, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // TRIGGER EMAIL TO HR & TEAM LEAD (IF SETTING IS TOGGLED ON)
+        if (applicant != null && applicant.OrganizationId.HasValue)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var settings = await _context.NotificationSettings
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(s => s.OrganizationId == applicant.OrganizationId.Value);
+
+                    if (settings == null || settings.EnableNewLeaveRequestEmails)
+                    {
+                        var hrAndTeamLeadEmails = await _context.Users
+                            .Where(u => u.OrganizationId == applicant.OrganizationId.Value &&
+                                       (u.Role == UserRole.HR || u.Id == applicant.TeamLeadId))
+                            .Select(u => u.Email)
+                            .Distinct()
+                            .ToListAsync();
+
+                        string subject = $"New Leave Request - {applicant.FullName}";
+                        string body = $@"
+                            <h3>New Leave Request Submitted</h3>
+                            <p><strong>Employee:</strong> {applicant.FullName} ({applicant.EmployeeCode ?? "N/A"})</p>
+                            <p><strong>Working Days:</strong> {businessDays}</p>
+                            <p><strong>Dates:</strong> {dto.StartDate:yyyy-MM-dd} to {dto.EndDate:yyyy-MM-dd}</p>
+                            <p><strong>Reason:</strong> {dto.Reason}</p>
+                            <p>Log in to LeaveFlow to review and process this request.</p>";
+
+                        foreach (var email in hrAndTeamLeadEmails)
+                        {
+                            await _emailService.SendEmailAsync(email, subject, body);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error sending new leave request notification email.");
+                }
+            }, CancellationToken.None);
+        }
 
         var responseData = new
         {
@@ -323,6 +387,37 @@ public class LeaveRequestsController : BaseController
         _leaveRepository.Update(leave);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+        // TRIGGER EMAIL TO EMPLOYEE (IF SETTING IS TOGGLED ON)
+        if (applicant != null && applicant.OrganizationId.HasValue)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var settings = await _context.NotificationSettings
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(s => s.OrganizationId == applicant.OrganizationId.Value);
+
+                    if (settings == null || settings.EnableLeaveStatusUpdateEmails)
+                    {
+                        string subject = "Leave Request Approved - LeaveFlow";
+                        string body = $@"
+                            <h3>Your Leave Request Has Been Approved!</h3>
+                            <p>Hi {applicant.FullName},</p>
+                            <p>Your leave request for <strong>{leave.StartDate:yyyy-MM-dd}</strong> to <strong>{leave.EndDate:yyyy-MM-dd}</strong> ({leave.NumberOfDays} working days) has been <strong style='color: green;'>APPROVED</strong>.</p>
+                            <p><strong>Comments:</strong> {dto.Comments ?? "None"}</p>
+                            <p>Your remaining leave balance is <strong>{applicant.LeaveBalance}</strong> days.</p>";
+
+                        await _emailService.SendEmailAsync(applicant.Email, subject, body);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error sending approval email to employee.");
+                }
+            }, CancellationToken.None);
+        }
+
         return Ok(new { message = "Leave request approved successfully." });
     }
 
@@ -351,6 +446,38 @@ public class LeaveRequestsController : BaseController
 
         _leaveRepository.Update(leave);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
+
+        // TRIGGER EMAIL TO EMPLOYEE (IF SETTING IS TOGGLED ON)
+        if (applicant != null && applicant.OrganizationId.HasValue)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var settings = await _context.NotificationSettings
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(s => s.OrganizationId == applicant.OrganizationId.Value);
+
+                    if (settings == null || settings.EnableLeaveStatusUpdateEmails)
+                    {
+                        string subject = "Leave Request Update - LeaveFlow";
+                        string body = $@"
+                            <h3>Your Leave Request Status Update</h3>
+                            <p>Hi {applicant.FullName},</p>
+                            <p>Your leave request for <strong>{leave.StartDate:yyyy-MM-dd}</strong> to <strong>{leave.EndDate:yyyy-MM-dd}</strong> has been <strong style='color: red;'>REJECTED</strong>.</p>
+                            <p><strong>Reason / Comments:</strong> {dto.Comments ?? "No comments provided."}</p>";
+
+                        await _emailService.SendEmailAsync(applicant.Email, subject, body);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error sending rejection email to employee.");
+                }
+            }, CancellationToken.None);
+        }
 
         return Ok(new { message = "Leave request rejected." });
     }
