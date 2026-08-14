@@ -132,107 +132,119 @@ public class UsersController : BaseController
         [FromServices] IEmailService emailService,
         CancellationToken cancellationToken)
     {
-        var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email, cancellationToken);
-        if (existingUser != null)
+        try
         {
-            return BadRequest(new { message = "User with this email already exists." });
-        }
-
-        // 1. Fetch HR's Organization
-        var hrUserIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                          ?? User.FindFirst("sub")?.Value;
-
-        if (!Guid.TryParse(hrUserIdStr, out var hrUserId))
-        {
-            return Unauthorized(new { message = "User identity invalid." });
-        }
-
-        var hrUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == hrUserId, cancellationToken);
-        if (hrUser?.OrganizationId == null)
-        {
-            return BadRequest(new { message = "HR account is not linked to any organization." });
-        }
-
-        var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
-        if (org == null)
-        {
-            return BadRequest(new { message = "Organization not found." });
-        }
-
-        // 2. Increment employee counter and generate code (e.g. SBSC-NIG-04)
-        org.LastEmployeeNumber++;
-        string formattedCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
-
-        string defaultPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
-        string resetToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
-                            .Replace("+", "").Replace("/", "").Replace("=", "");
-
-        var newUser = new User
-        {
-            Id = Guid.NewGuid(),
-            FullName = dto.FullName,
-            Email = dto.Email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(defaultPassword),
-            DepartmentId = dto.DepartmentId,
-            TeamLeadId = dto.TeamLeadId,
-            Designation = dto.Designation,
-            Role = Enum.TryParse<UserRole>(dto.Role, true, out var role) ? role : UserRole.Employee,
-            LeaveBalance = 20,
-            OrganizationId = org.Id,
-            EmployeeCode = formattedCode,
-            PasswordResetToken = resetToken,
-            ResetTokenExpiresAt = DateTime.UtcNow.AddHours(48),
-            CreatedAt = DateTime.UtcNow
-        };
-
-        await _context.Users.AddAsync(newUser, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        string baseUrl = !string.IsNullOrWhiteSpace(dto.ClientResetUrl)
-            ? dto.ClientResetUrl
-            : "https://new-leave-management-system-qszg.vercel.app/reset-password";
-
-        string resetLink = $"{baseUrl}?email={Uri.EscapeDataString(dto.Email)}&token={resetToken}";
-
-        string emailBody = $@"
-            <h3>Welcome to LeaveFlow, {dto.FullName}!</h3>
-            <p>An account has been created for you by HR.</p>
-            <p><strong>Employee ID:</strong> {formattedCode}</p>
-            <p><strong>Temporary Password:</strong> <code>{defaultPassword}</code></p>
-            <p>Please click the link below to set your new password:</p>
-            <p><a href='{resetLink}' style='background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block;'>Set New Password</a></p>";
-
-        _ = Task.Run(async () =>
-        {
-            try
+            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email, cancellationToken);
+            if (existingUser != null)
             {
-                await emailService.SendEmailAsync(dto.Email, "Welcome to LeaveFlow - Set Your Password", emailBody);
-                _logger.LogInformation("Provisioning email sent successfully to {Email}", dto.Email);
+                return BadRequest(new { success = false, message = "User with this email already exists." });
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send account provisioning email to {Email}", dto.Email);
-            }
-        });
 
-        return Ok(new
-        {
-            success = true,
-            message = "User created successfully and invitation email sent.",
-            data = new
+            // 1. Fetch HR's Organization
+            var hrUserIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                                ?? User.FindFirst("sub")?.Value;
+
+            if (!Guid.TryParse(hrUserIdStr, out var hrUserId))
             {
-                userId = newUser.Id,
-                employeeCode = newUser.EmployeeCode,
-                email = newUser.Email,
-                departmentId = newUser.DepartmentId,
-                teamLeadId = newUser.TeamLeadId,
-                defaultPassword,
-                resetToken
+                return Unauthorized(new { success = false, message = "User identity invalid." });
             }
-        });
+
+            var hrUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == hrUserId, cancellationToken);
+            if (hrUser?.OrganizationId == null)
+            {
+                return BadRequest(new { success = false, message = "HR account is not linked to any organization." });
+            }
+
+            var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
+            if (org == null)
+            {
+                return BadRequest(new { success = false, message = "Organization not found." });
+            }
+
+            // 2. Increment employee counter and generate code
+            org.LastEmployeeNumber++;
+            string formattedCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
+
+            string defaultPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
+            string resetToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+                                .Replace("+", "").Replace("/", "").Replace("=", "");
+
+            var newUser = new User
+            {
+                Id = Guid.NewGuid(),
+                FullName = dto.FullName,
+                Email = dto.Email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(defaultPassword),
+                DepartmentId = dto.DepartmentId,
+                TeamLeadId = dto.TeamLeadId,
+                Designation = dto.Designation,
+                Role = Enum.TryParse<UserRole>(dto.Role, true, out var role) ? role : UserRole.Employee,
+                LeaveBalance = 20,
+                OrganizationId = org.Id,
+                EmployeeCode = formattedCode,
+                PasswordResetToken = resetToken,
+                ResetTokenExpiresAt = DateTime.UtcNow.AddHours(48),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _context.Users.AddAsync(newUser, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            string baseUrl = !string.IsNullOrWhiteSpace(dto.ClientResetUrl)
+                ? dto.ClientResetUrl
+                : "https://new-leave-management-system-qszg.vercel.app/reset-password";
+
+            string resetLink = $"{baseUrl}?email={Uri.EscapeDataString(dto.Email)}&token={resetToken}";
+
+            string emailBody = $@"
+                <h3>Welcome to LeaveFlow, {dto.FullName}!</h3>
+                <p>An account has been created for you by HR.</p>
+                <p><strong>Employee ID:</strong> {formattedCode}</p>
+                <p><strong>Temporary Password:</strong> <code>{defaultPassword}</code></p>
+                <p>Please click the link below to set your new password:</p>
+                <p><a href='{resetLink}' style='background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block;'>Set New Password</a></p>";
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await emailService.SendEmailAsync(dto.Email, "Welcome to LeaveFlow - Set Your Password", emailBody);
+                    _logger.LogInformation("Provisioning email sent successfully to {Email}", dto.Email);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send account provisioning email to {Email}", dto.Email);
+                }
+            });
+
+            return Ok(new
+            {
+                success = true,
+                message = "User created successfully and invitation email sent.",
+                data = new
+                {
+                    userId = newUser.Id,
+                    employeeCode = newUser.EmployeeCode,
+                    email = newUser.Email,
+                    departmentId = newUser.DepartmentId,
+                    teamLeadId = newUser.TeamLeadId,
+                    defaultPassword,
+                    resetToken
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CRITICAL ERROR during user provisioning: {Message} | Inner: {Inner}", ex.Message, ex.InnerException?.Message);
+            return StatusCode(500, new
+            {
+                success = false,
+                message = ex.Message,
+                innerError = ex.InnerException?.Message
+            });
+        }
     }
 
-    // BULK CSV UPLOAD + SIMULTANEOUS EMAILS (HR ONLY)
     [HttpPost("bulk-upload")]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> BulkUploadUsers(
@@ -247,7 +259,7 @@ public class UsersController : BaseController
             return BadRequest(new { message = "Only .csv files are supported." });
 
         var hrUserIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                          ?? User.FindFirst("sub")?.Value;
+                            ?? User.FindFirst("sub")?.Value;
 
         if (!Guid.TryParse(hrUserIdStr, out var hrUserId))
         {
