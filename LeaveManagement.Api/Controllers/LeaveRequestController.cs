@@ -1,7 +1,7 @@
 ﻿using LeaveManagement.Application.Common.Helpers;
 using LeaveManagement.Application.DTOs.Leave;
 using LeaveManagement.Application.DTOs.LeaveRequest;
-using LeaveManagement.Application.Interfaces; 
+using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
@@ -40,15 +40,28 @@ public class LeaveRequestsController : BaseController
         _logger = logger;
     }
 
+    private async Task<Guid?> GetUserOrganizationIdAsync(CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == Guid.Empty) return null;
+
+        var user = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
+        return user?.OrganizationId;
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
+
         if (!User.IsInRole("TeamLead") && !User.IsInRole("HR"))
         {
             query.EmployeeId = GetCurrentUserId();
         }
 
         var (items, totalCount) = await _leaveRepository.GetPagedAsync(
+            orgId.Value,
             query.EmployeeId,
             query.Status,
             query.SearchTerm,
@@ -93,30 +106,24 @@ public class LeaveRequestsController : BaseController
         });
     }
 
-    // HR DEDICATED COMPANY OVERVIEW (Filtered by HR's OrganizationId)
+    // HR DEDICATED COMPANY OVERVIEW
     [HttpGet("all")]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> GetTotalRequestsForHR([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
     {
-        var currentHrId = GetCurrentUserId();
-        var currentHr = await _userRepository.GetByIdAsync(currentHrId, cancellationToken);
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
         query.EmployeeId = null;
 
         var (items, totalCount) = await _leaveRepository.GetPagedAsync(
+            orgId.Value,
             query.EmployeeId,
             query.Status,
             query.SearchTerm,
             query.PageNumber,
             query.PageSize,
             cancellationToken);
-
-        // Filter requests to HR's organization only
-        if (currentHr?.OrganizationId != null)
-        {
-            items = items.Where(l => l.Employee?.OrganizationId == currentHr.OrganizationId);
-            totalCount = items.Count();
-        }
 
         var formattedItems = items.Select(l => new LeaveRequestSummaryDto
         {
@@ -159,8 +166,11 @@ public class LeaveRequestsController : BaseController
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
-        if (leave == null) return NotFound(new { message = "Leave request not found." });
+        if (leave == null || leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId)
+            return NotFound(new { message = "Leave request not found." });
 
         var summary = new LeaveRequestSummaryDto
         {
@@ -222,7 +232,6 @@ public class LeaveRequestsController : BaseController
         await _leaveRepository.AddAsync(leaveRequest, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // TRIGGER EMAIL TO HR & TEAM LEAD (IF SETTING IS TOGGLED ON)
         if (applicant != null && applicant.OrganizationId.HasValue)
         {
             _ = Task.Run(async () =>
@@ -237,7 +246,7 @@ public class LeaveRequestsController : BaseController
                     {
                         var hrAndTeamLeadEmails = await _context.Users
                             .Where(u => u.OrganizationId == applicant.OrganizationId.Value &&
-                                       (u.Role == UserRole.HR || u.Id == applicant.TeamLeadId))
+                                        (u.Role == UserRole.HR || u.Id == applicant.TeamLeadId))
                             .Select(u => u.Email)
                             .Distinct()
                             .ToListAsync();
@@ -325,8 +334,11 @@ public class LeaveRequestsController : BaseController
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteLeaveRequest(Guid id, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
-        if (leave == null) return NotFound(new { message = "Leave request not found." });
+
+        if (leave == null || leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId)
+            return NotFound(new { message = "Leave request not found." });
 
         var currentUserId = GetCurrentUserId();
 
@@ -350,8 +362,11 @@ public class LeaveRequestsController : BaseController
     [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> ApproveLeave(Guid id, [FromBody] ManagerActionDto dto, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
-        if (leave == null) return NotFound(new { message = "Leave request not found." });
+
+        if (leave == null || leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId)
+            return NotFound(new { message = "Leave request not found." });
 
         var currentUserId = GetCurrentUserId();
 
@@ -387,7 +402,6 @@ public class LeaveRequestsController : BaseController
         _leaveRepository.Update(leave);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // TRIGGER EMAIL TO EMPLOYEE (IF SETTING IS TOGGLED ON)
         if (applicant != null && applicant.OrganizationId.HasValue)
         {
             _ = Task.Run(async () =>
@@ -425,8 +439,11 @@ public class LeaveRequestsController : BaseController
     [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> RejectLeave(Guid id, [FromBody] ManagerActionDto dto, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
-        if (leave == null) return NotFound(new { message = "Leave request not found." });
+
+        if (leave == null || leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId)
+            return NotFound(new { message = "Leave request not found." });
 
         var currentUserId = GetCurrentUserId();
 
@@ -449,7 +466,6 @@ public class LeaveRequestsController : BaseController
 
         var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
 
-        // TRIGGER EMAIL TO EMPLOYEE (IF SETTING IS TOGGLED ON)
         if (applicant != null && applicant.OrganizationId.HasValue)
         {
             _ = Task.Run(async () =>

@@ -16,6 +16,7 @@ public class LeaveRequestRepository : ILeaveRequestRepository
     }
 
     public async Task<(IEnumerable<LeaveRequest> Items, int TotalCount)> GetPagedAsync(
+        Guid organizationId, // <--- Mandatory Tenant ID
         Guid? employeeId,
         string? status,
         string? searchTerm,
@@ -29,6 +30,9 @@ public class LeaveRequestRepository : ILeaveRequestRepository
                 .ThenInclude(e => e.Department)
             .AsNoTracking()
             .AsQueryable();
+
+        // Hard filter applied immediately to lock down the tenant data
+        query = query.Where(l => l.OrganizationId == organizationId || l.Employee.OrganizationId == organizationId);
 
         if (employeeId.HasValue && employeeId.Value != Guid.Empty)
         {
@@ -84,6 +88,17 @@ public class LeaveRequestRepository : ILeaveRequestRepository
             .Include(l => l.LeaveType)
             .Include(l => l.Employee)
                 .ThenInclude(e => e.Department)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IEnumerable<LeaveRequest>> GetAllByOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default)
+    {
+        return await _context.LeaveRequests
+            .Include(l => l.LeaveType)
+            .Include(l => l.Employee)
+                .ThenInclude(e => e.Department)
+            .Where(l => l.Employee.OrganizationId == organizationId)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync(cancellationToken);
     }

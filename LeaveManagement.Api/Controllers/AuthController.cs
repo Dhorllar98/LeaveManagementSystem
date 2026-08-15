@@ -1,10 +1,15 @@
 ﻿using LeaveManagement.Application.DTOs.Auth;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Infrastructure.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore; 
 
 namespace LeaveManagement.Api.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Authorize]
 
 public class AuthController : BaseController
 {

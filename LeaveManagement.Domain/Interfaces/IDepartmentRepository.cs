@@ -6,7 +6,11 @@ public interface IDepartmentRepository
 {
     Task<Department?> GetByIdAsync(Guid id);
     Task<IEnumerable<Department>> GetAllAsync();
-    Task<bool> ExistsByNameAsync(string name);
+
+    Task<IEnumerable<Department>> GetAllByOrganizationAsync(Guid organizationId);
+
+    Task<bool> ExistsByNameAsync(string name, Guid organizationId);
+
     Task AddAsync(Department department);
     Task UpdateAsync(Department department);
     Task SaveChangesAsync();

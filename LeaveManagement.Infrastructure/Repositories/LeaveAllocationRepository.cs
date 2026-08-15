@@ -17,26 +17,45 @@ public class LeaveAllocationRepository : ILeaveAllocationRepository
     public async Task<IEnumerable<LeaveAllocation>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _context.LeaveAllocations
-            .Include(la => la.Employee)
             .Include(la => la.LeaveType)
+            .Include(la => la.Employee)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IEnumerable<LeaveAllocation>> GetAllByOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default)
+    {
+        return await _context.LeaveAllocations
+            .Include(la => la.LeaveType)
+            .Include(la => la.Employee)
+            .AsNoTracking()
+            .Where(la => la.Employee.OrganizationId == organizationId)
             .ToListAsync(cancellationToken);
     }
 
     public async Task<LeaveAllocation?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.LeaveAllocations
-            .Include(la => la.Employee)
             .Include(la => la.LeaveType)
+            .Include(la => la.Employee)
             .FirstOrDefaultAsync(la => la.Id == id, cancellationToken);
     }
 
     public async Task<IEnumerable<LeaveAllocation>> GetByEmployeeIdAsync(Guid employeeId, CancellationToken cancellationToken = default)
     {
         return await _context.LeaveAllocations
-            .Where(la => la.EmployeeId == employeeId)
-            .Include(la => la.Employee)
             .Include(la => la.LeaveType)
+            .Include(la => la.Employee)
+            .Where(la => la.EmployeeId == employeeId)
+            .AsNoTracking()
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<bool> AllocationExistsAsync(Guid employeeId, Guid leaveTypeId, int period, CancellationToken cancellationToken = default)
+    {
+        return await _context.LeaveAllocations.AnyAsync(
+            la => la.EmployeeId == employeeId && la.LeaveTypeId == leaveTypeId && la.Period == period,
+            cancellationToken);
     }
 
     public async Task AddAsync(LeaveAllocation leaveAllocation, CancellationToken cancellationToken = default)
@@ -52,11 +71,5 @@ public class LeaveAllocationRepository : ILeaveAllocationRepository
     public void Delete(LeaveAllocation leaveAllocation)
     {
         _context.LeaveAllocations.Remove(leaveAllocation);
-    }
-
-    public async Task<bool> AllocationExistsAsync(Guid employeeId, Guid leaveTypeId, int period, CancellationToken cancellationToken = default)
-    {
-        return await _context.LeaveAllocations
-            .AnyAsync(la => la.EmployeeId == employeeId && la.LeaveTypeId == leaveTypeId && la.Period == period, cancellationToken);
     }
 }
