@@ -11,6 +11,17 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// --- PORT LOCKDOWN: Ensure Kestrel only binds to the single cloud port ---
+var portEnv = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(portEnv) && int.TryParse(portEnv, out var cloudPort))
+{
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        // Closes all other default internal ports and binds exclusively to the cloud port
+        options.ListenAnyIP(cloudPort);
+    });
+}
+
 builder.Configuration.Sources.Clear();
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
