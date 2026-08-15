@@ -22,6 +22,15 @@ public class UserRepository : IUserRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IEnumerable<User>> GetAllByOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Users
+            .Include(u => u.Department)
+            .AsNoTracking()
+            .Where(u => u.OrganizationId == organizationId)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.Users

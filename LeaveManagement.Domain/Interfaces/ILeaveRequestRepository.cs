@@ -5,11 +5,13 @@ namespace LeaveManagement.Domain.Interfaces;
 public interface ILeaveRequestRepository
 {
     Task<IEnumerable<LeaveRequest>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<IEnumerable<LeaveRequest>> GetAllByOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default);
     Task<LeaveRequest?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IEnumerable<LeaveRequest>> GetByEmployeeIdAsync(Guid employeeId, CancellationToken cancellationToken = default);
 
-    // Paginated, Filtered & Search Query (For Front-end easy access) 
+    // FIX: Added organizationId to enforce tenant isolation at the database level
     Task<(IEnumerable<LeaveRequest> Items, int TotalCount)> GetPagedAsync(
+        Guid organizationId,
         Guid? employeeId,
         string? status,
         string? searchTerm,

@@ -1,45 +1,48 @@
 ﻿using LeaveManagement.Application.DTOs.Profile;
-using LeaveManagement.Domain.Interfaces;
+using LeaveManagement.Domain.Enums;
+using LeaveManagement.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeaveManagement.Api.Controllers;
 
+[ApiController]
+[Route("api/[controller]")]
 [Authorize]
 public class ProfileController : BaseController
 {
-    private readonly IUserRepository _userRepository;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly AppDbContext _context;
 
-    public ProfileController(IUserRepository userRepository, IUnitOfWork unitOfWork)
+    public ProfileController(AppDbContext context)
     {
-        _userRepository = userRepository;
-        _unitOfWork = unitOfWork;
+        _context = context;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetProfile(CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty) return Unauthorized();
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == Guid.Empty) return Unauthorized();
 
-        var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
-        if (user == null) return NotFound();
+        var user = await _context.Users
+            .Include(u => u.Department)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+
+        if (user == null) return NotFound(new { message = "Profile not found." });
 
         return Ok(new
         {
-            success = true,
-            data = new
-            {
-                id = user.Id,
-                fullName = user.FullName,
-                email = user.Email,
-                role = user.Role.ToString(),
-                department = user.Department?.Name ?? "Unassigned",
-                designation = user.Designation,
-                leaveBalance = user.LeaveBalance,
-                createdAt = user.CreatedAt
-            }
+            user.Id,
+            user.FullName,
+            user.Email,
+            user.EmployeeCode,
+            user.Designation,
+            user.LeaveBalance,
+            Role = user.Role.ToString(),
+            DepartmentName = user.Department?.Name,
+            user.OrganizationId
         });
     }
 
@@ -49,70 +52,48 @@ public class ProfileController : BaseController
         var currentUserId = GetCurrentUserId();
         if (currentUserId == Guid.Empty) return Unauthorized();
 
+        // Fetch the user making the request to get their OrganizationId and Role
+        var currentUser = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+
+        if (currentUser == null) return Unauthorized();
+
+        // Determine which user we are trying to update
         var targetUserId = dto.UserId.HasValue && dto.UserId.Value != Guid.Empty
             ? dto.UserId.Value
             : currentUserId;
 
-        var user = await _userRepository.GetByIdAsync(targetUserId, cancellationToken);
-        if (user == null) return NotFound(new { success = false, message = $"User with ID '{targetUserId}' not found." });
-
-        user.FullName = string.IsNullOrWhiteSpace(dto.FullName) ? user.FullName : dto.FullName;
-
-        if (dto.DepartmentId.HasValue && dto.DepartmentId.Value != Guid.Empty)
+        // ROLE CHECK: Prevent standard employees from updating others (Only HR allowed)
+        if (targetUserId != currentUserId && currentUser.Role != UserRole.HR)
         {
-            user.DepartmentId = dto.DepartmentId.Value;
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "You do not have permission to update other users' profiles." });
         }
 
-        if (dto.Designation != null)
+        // 4. 🔒 STRICT TENANT FILTER: Ensure the target user belongs to the same organization
+        var targetUser = await _context.Users
+            .FirstOrDefaultAsync(u => u.Id == targetUserId && u.OrganizationId == currentUser.OrganizationId, cancellationToken);
+
+        if (targetUser == null)
         {
-            user.Designation = dto.Designation;
+            return NotFound(new { message = "Target user not found or does not belong to your organization." });
         }
 
-        user.UpdatedAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(dto.FullName))
+            targetUser.FullName = dto.FullName;
 
-        _userRepository.Update(user);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        if (dto.DepartmentId.HasValue)
+            targetUser.DepartmentId = dto.DepartmentId.Value;
 
-        var updatedUser = await _userRepository.GetByIdAsync(user.Id, cancellationToken) ?? user;
+        if (!string.IsNullOrWhiteSpace(dto.Designation))
+            targetUser.Designation = dto.Designation;
+
+        await _context.SaveChangesAsync(cancellationToken);
 
         return Ok(new
         {
             success = true,
-            message = "Profile updated successfully.",
-            data = new
-            {
-                id = updatedUser.Id,
-                fullName = updatedUser.FullName,
-                email = updatedUser.Email,
-                role = updatedUser.Role.ToString(),
-                department = updatedUser.Department?.Name ?? "Unassigned",
-                designation = updatedUser.Designation,
-                leaveBalance = updatedUser.LeaveBalance,
-                createdAt = updatedUser.CreatedAt
-            }
+            message = targetUserId == currentUserId ? "Your profile was updated successfully." : "Employee profile updated successfully."
         });
-    }
-
-    [HttpPost("change-password")]
-    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto, CancellationToken cancellationToken)
-    {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty) return Unauthorized();
-
-        var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
-        if (user == null) return NotFound();
-
-        if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
-        {
-            return BadRequest(new { message = "Incorrect current password." });
-        }
-
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
-        user.UpdatedAt = DateTime.UtcNow;
-
-        _userRepository.Update(user);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        return Ok(new { message = "Password updated successfully." });
     }
 }

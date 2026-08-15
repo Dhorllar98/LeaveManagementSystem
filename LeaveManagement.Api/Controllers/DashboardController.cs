@@ -1,11 +1,12 @@
-﻿using LeaveManagement.Application.DTOs.Dashboard;
-using LeaveManagement.Domain.Enums;
+﻿using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LeaveManagement.Api.Controllers;
 
+[ApiController]
+[Route("api/[controller]")]
 [Authorize]
 public class DashboardController : BaseController
 {
@@ -18,53 +19,40 @@ public class DashboardController : BaseController
         _userRepository = userRepository;
     }
 
-    // GET /api/Dashboard/user-stats (Employee Dashboard)
-    [HttpGet("user-stats")]
-    public async Task<ActionResult<DashboardResponseDto>> GetUserDashboardStats(CancellationToken cancellationToken)
-    {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty) return Unauthorized();
-
-        var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
-        if (user == null) return NotFound();
-
-        var myLeaves = await _leaveRepository.GetByEmployeeIdAsync(userId, cancellationToken);
-
-        var dto = new DashboardResponseDto
-        {
-            EmployeeName = user.FullName,
-            PendingRequestsCount = myLeaves.Count(l => l.Status == LeaveStatus.Pending),
-            ApprovedLeavesCount = myLeaves.Count(l => l.Status == LeaveStatus.Approved),
-            RejectedLeavesCount = myLeaves.Count(l => l.Status == LeaveStatus.Rejected),
-            TotalLeaveDaysRemaining = user.LeaveBalance
-        };
-
-        return Ok(dto);
-    }
-
-    // GET /api/Dashboard/admin-stats (HR & Team Lead Dashboard)
     [HttpGet("admin-stats")]
-    [Authorize(Roles = "HR,TeamLead")]
-    public async Task<ActionResult<AdminDashboardResponseDto>> GetAdminDashboardStats(CancellationToken cancellationToken)
+    [Authorize(Roles = "HR,Admin")]
+    public async Task<IActionResult> GetAdminDashboardStats(CancellationToken cancellationToken)
     {
-        var allLeaves = (await _leaveRepository.GetAllAsync(cancellationToken)).ToList();
-        var allUsers = await _userRepository.GetAllAsync(cancellationToken);
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == Guid.Empty) return Unauthorized();
 
-        var today = DateTime.UtcNow.Date;
-
-        var dto = new AdminDashboardResponseDto
+        // 1. Resolve the admin's organization
+        var adminUser = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
+        if (adminUser?.OrganizationId == null)
         {
-            TotalEmployees = allUsers.Count(),
-            TotalRequestsCount = allLeaves.Count,
-            PendingApprovalsCount = allLeaves.Count(l => l.Status == LeaveStatus.Pending),
-            ApprovedRequestsCount = allLeaves.Count(l => l.Status == LeaveStatus.Approved),
-            RejectedRequestsCount = allLeaves.Count(l => l.Status == LeaveStatus.Rejected),
-            EmployeesCurrentlyOnLeave = allLeaves.Count(l =>
-                l.Status == LeaveStatus.Approved &&
-                l.StartDate.Date <= today &&
-                l.EndDate.Date >= today)
-        };
+            return BadRequest(new { message = "User organization not found." });
+        }
 
-        return Ok(dto);
+        var orgId = adminUser.OrganizationId.Value;
+
+        // 2. Fetch stats ONLY for this organization
+        var orgLeaves = await _leaveRepository.GetAllByOrganizationAsync(orgId, cancellationToken);
+        var orgUsers = await _userRepository.GetAllByOrganizationAsync(orgId, cancellationToken);
+
+        // 3. Calculate statistics safely scoped to the tenant
+        var pendingApprovals = orgLeaves.Count(l => l.Status == LeaveStatus.Pending);
+        var totalEmployees = orgUsers.Count();
+        var activeLeaves = orgLeaves.Count(l => l.Status == LeaveStatus.Approved && l.StartDate <= DateTime.UtcNow && l.EndDate >= DateTime.UtcNow);
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                TotalEmployees = totalEmployees,
+                PendingLeaveApprovals = pendingApprovals,
+                ActiveLeavesToday = activeLeaves
+            }
+        });
     }
 }

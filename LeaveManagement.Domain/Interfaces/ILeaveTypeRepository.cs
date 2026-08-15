@@ -5,6 +5,7 @@ namespace LeaveManagement.Domain.Interfaces;
 public interface ILeaveTypeRepository
 {
     Task<IEnumerable<LeaveType>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<IEnumerable<LeaveType>> GetAllByOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default);
     Task<LeaveType?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task AddAsync(LeaveType leaveType, CancellationToken cancellationToken = default);
     void Update(LeaveType leaveType);

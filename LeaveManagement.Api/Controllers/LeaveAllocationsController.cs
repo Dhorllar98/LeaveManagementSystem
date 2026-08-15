@@ -6,23 +6,42 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LeaveManagement.Api.Controllers;
 
+[ApiController]
+[Route("api/[controller]")]
 [Authorize]
 public class LeaveAllocationsController : BaseController
 {
     private readonly ILeaveAllocationRepository _repository;
+    private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
 
-    public LeaveAllocationsController(ILeaveAllocationRepository repository, IUnitOfWork unitOfWork)
+    public LeaveAllocationsController(
+        ILeaveAllocationRepository repository,
+        IUserRepository userRepository,
+        IUnitOfWork unitOfWork)
     {
         _repository = repository;
+        _userRepository = userRepository;
         _unitOfWork = unitOfWork;
     }
 
+    private async Task<Guid?> GetUserOrganizationIdAsync(CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == Guid.Empty) return null;
+
+        var user = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
+        return user?.OrganizationId;
+    }
+
     [HttpGet]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR,TeamLead")]
     public async Task<ActionResult<IEnumerable<LeaveAllocationDto>>> GetLeaveAllocations(CancellationToken cancellationToken)
     {
-        var allocations = await _repository.GetAllAsync(cancellationToken);
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
+
+        var allocations = await _repository.GetAllByOrganizationAsync(orgId.Value, cancellationToken);
         var result = allocations.Select(la => new LeaveAllocationDto
         {
             Id = la.Id,
@@ -40,8 +59,10 @@ public class LeaveAllocationsController : BaseController
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<LeaveAllocationDto>> GetLeaveAllocation(Guid id, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+
         var allocation = await _repository.GetByIdAsync(id, cancellationToken);
-        if (allocation == null) return NotFound();
+        if (allocation == null || allocation.Employee?.OrganizationId != orgId) return NotFound();
 
         return Ok(new LeaveAllocationDto
         {
@@ -56,9 +77,18 @@ public class LeaveAllocationsController : BaseController
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR,TeamLead")]
     public async Task<ActionResult<LeaveAllocationDto>> CreateLeaveAllocation([FromBody] CreateLeaveAllocationDto dto, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+
+        // Ensure the target employee belongs to the same organization
+        var targetEmployee = await _userRepository.GetByIdAsync(dto.EmployeeId, cancellationToken);
+        if (targetEmployee == null || targetEmployee.OrganizationId != orgId)
+        {
+            return BadRequest(new { message = "Invalid employee or employee does not belong to your organization." });
+        }
+
         var exists = await _repository.AllocationExistsAsync(dto.EmployeeId, dto.LeaveTypeId, dto.Period, cancellationToken);
         if (exists)
         {
@@ -93,11 +123,13 @@ public class LeaveAllocationsController : BaseController
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> UpdateLeaveAllocation(Guid id, UpdateLeaveAllocationDto dto, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+
         var allocation = await _repository.GetByIdAsync(id, cancellationToken);
-        if (allocation == null) return NotFound();
+        if (allocation == null || allocation.Employee?.OrganizationId != orgId) return NotFound();
 
         allocation.NumberOfDays = dto.NumberOfDays;
 
@@ -108,11 +140,13 @@ public class LeaveAllocationsController : BaseController
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> DeleteLeaveAllocation(Guid id, CancellationToken cancellationToken)
     {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+
         var allocation = await _repository.GetByIdAsync(id, cancellationToken);
-        if (allocation == null) return NotFound();
+        if (allocation == null || allocation.Employee?.OrganizationId != orgId) return NotFound();
 
         _repository.Delete(allocation);
         await _unitOfWork.SaveChangesAsync(cancellationToken);

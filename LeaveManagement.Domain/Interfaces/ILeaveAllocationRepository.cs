@@ -5,6 +5,7 @@ namespace LeaveManagement.Domain.Interfaces;
 public interface ILeaveAllocationRepository
 {
     Task<IEnumerable<LeaveAllocation>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<IEnumerable<LeaveAllocation>> GetAllByOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default);
     Task<LeaveAllocation?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IEnumerable<LeaveAllocation>> GetByEmployeeIdAsync(Guid employeeId, CancellationToken cancellationToken = default);
     Task AddAsync(LeaveAllocation leaveAllocation, CancellationToken cancellationToken = default);

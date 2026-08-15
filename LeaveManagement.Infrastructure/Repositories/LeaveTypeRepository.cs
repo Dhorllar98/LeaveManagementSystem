@@ -19,6 +19,14 @@ public class LeaveTypeRepository : ILeaveTypeRepository
         return await _context.LeaveTypes.AsNoTracking().ToListAsync(cancellationToken);
     }
 
+    public async Task<IEnumerable<LeaveType>> GetAllByOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default)
+    {
+        return await _context.LeaveTypes
+            .AsNoTracking()
+            .Where(lt => lt.OrganizationId == organizationId)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<LeaveType?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.LeaveTypes.FindAsync([id], cancellationToken);
