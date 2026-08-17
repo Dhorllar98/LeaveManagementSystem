@@ -54,7 +54,7 @@ public class AuthService : IAuthService
             throw new ConflictException($"User with email '{request.AdminEmail}' already exists.");
         }
 
-        //Create Organization
+        // Create Organization
         var organization = new Organization
         {
             Id = Guid.NewGuid(),
@@ -64,7 +64,7 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow
         };
 
-        //Create Default HR Department
+        // Create Default HR Department
         var hrDepartment = new Department
         {
             Id = Guid.NewGuid(),
@@ -73,15 +73,15 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow
         };
 
-        //Create Default Leave Types
+        // Create Default Leave Types with OrganizationId bound
         var defaultLeaveTypes = new List<LeaveType>
         {
-            new() { Id = Guid.NewGuid(), Name = "Annual Leave", DefaultDays = 20, CreatedAt = DateTime.UtcNow },
-            new() { Id = Guid.NewGuid(), Name = "Sick Leave", DefaultDays = 10, CreatedAt = DateTime.UtcNow },
-            new() { Id = Guid.NewGuid(), Name = "Maternity/Paternity Leave", DefaultDays = 30, CreatedAt = DateTime.UtcNow }
+            new() { Id = Guid.NewGuid(), Name = "Annual Leave", DefaultDays = 20, OrganizationId = organization.Id, CreatedAt = DateTime.UtcNow },
+            new() { Id = Guid.NewGuid(), Name = "Sick Leave", DefaultDays = 10, OrganizationId = organization.Id, CreatedAt = DateTime.UtcNow },
+            new() { Id = Guid.NewGuid(), Name = "Maternity/Paternity Leave", DefaultDays = 30, OrganizationId = organization.Id, CreatedAt = DateTime.UtcNow }
         };
 
-        //Create Initial HR Admin Account
+        // Create Initial HR Admin Account
         var hrAdmin = new User
         {
             Id = Guid.NewGuid(),
@@ -97,14 +97,14 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow
         };
 
-        //Generate Auth Tokens
+        // Generate Auth Tokens
         var token = _jwtTokenGenerator.GenerateAccessToken(hrAdmin);
         var refreshToken = _jwtTokenGenerator.GenerateRefreshToken();
 
         hrAdmin.RefreshToken = refreshToken;
         hrAdmin.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
 
-        //Save via Repositories & UnitOfWork
+        // Save via Repositories & UnitOfWork
         await _organizationRepository.AddAsync(organization, cancellationToken);
         await _departmentRepository.AddAsync(hrDepartment);
         foreach (var leaveType in defaultLeaveTypes)
@@ -145,6 +145,11 @@ public class AuthService : IAuthService
             throw new ConflictException($"User with email {request.Email} already exists.");
         }
 
+        // Fetch department to inherit tenant OrganizationId
+        var department = request.DepartmentId.HasValue
+            ? await _departmentRepository.GetByIdAsync(request.DepartmentId.Value)
+            : null;
+
         var user = new User
         {
             FullName = request.FullName,
@@ -152,8 +157,10 @@ public class AuthService : IAuthService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Role = request.Role,
             DepartmentId = request.DepartmentId,
+            OrganizationId = department?.OrganizationId, // Automatically binds employee to organization
             Designation = request.Designation,
-            LeaveBalance = 20
+            LeaveBalance = 20,
+            CreatedAt = DateTime.UtcNow
         };
 
         await _userRepository.AddAsync(user, cancellationToken);

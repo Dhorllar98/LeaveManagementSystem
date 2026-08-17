@@ -31,22 +31,20 @@ public class DepartmentRepository : IDepartmentRepository
             .ToListAsync();
     }
 
-    // ADDED: Filters the database query directly by OrganizationId
     public async Task<IEnumerable<Department>> GetAllByOrganizationAsync(Guid organizationId)
     {
         return await _context.Departments
             .Include(d => d.TeamLead)
             .Include(d => d.Employees)
-            .Where(d => d.OrganizationId == organizationId) // Lock down to tenant
+            .Where(d => d.OrganizationId == organizationId || d.OrganizationId == Guid.Empty)
             .AsNoTracking()
             .ToListAsync();
     }
 
-    // MODIFIED: Checks for duplicate department names ONLY within the same organization
     public async Task<bool> ExistsByNameAsync(string name, Guid organizationId)
     {
         return await _context.Departments
-            .AnyAsync(d => d.OrganizationId == organizationId && d.Name.ToLower() == name.ToLower());
+            .AnyAsync(d => (d.OrganizationId == organizationId || d.OrganizationId == Guid.Empty) && d.Name.ToLower() == name.ToLower());
     }
 
     public async Task AddAsync(Department department)

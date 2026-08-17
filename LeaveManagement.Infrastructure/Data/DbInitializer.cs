@@ -8,7 +8,7 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext context)
     {
-        //Build all tables directly from current C# DbContext models
+        // Build all tables directly from current C# DbContext models
         await context.Database.EnsureCreatedAsync();
 
         // Seed Default Organization
@@ -27,22 +27,22 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        // AUTO-BACKFILL STEP: Assign orphaned NULL records to the default organization
-        // Parameterized ({0}) to safely pass the Guid without triggering EF1002 warnings
+        // AUTO-BACKFILL STEP: Assign orphaned NULL records across ALL tables to default organization
         await context.Database.ExecuteSqlRawAsync(@"
-               UPDATE ""Users"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
-               UPDATE ""LeaveRequests"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
-               UPDATE ""Departments"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
-                            ", defaultOrg.Id);
+            UPDATE ""Users"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
+            UPDATE ""LeaveRequests"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
+            UPDATE ""Departments"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
+            UPDATE ""LeaveTypes"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
+        ", defaultOrg.Id);
 
-        // Leave Types
+        // Leave Types (Assigned to Default Organization)
         if (!await context.LeaveTypes.AnyAsync())
         {
             var leaveTypes = new List<LeaveType>
             {
-                new() { Id = Guid.NewGuid(), Name = "Annual Leave", DefaultDays = 20, CreatedAt = DateTime.UtcNow },
-                new() { Id = Guid.NewGuid(), Name = "Sick Leave", DefaultDays = 10, CreatedAt = DateTime.UtcNow },
-                new() { Id = Guid.NewGuid(), Name = "Maternity/Paternity Leave", DefaultDays = 30, CreatedAt = DateTime.UtcNow }
+                new() { Id = Guid.NewGuid(), Name = "Annual Leave", DefaultDays = 20, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow },
+                new() { Id = Guid.NewGuid(), Name = "Sick Leave", DefaultDays = 10, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow },
+                new() { Id = Guid.NewGuid(), Name = "Maternity/Paternity Leave", DefaultDays = 30, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow }
             };
 
             await context.LeaveTypes.AddRangeAsync(leaveTypes);
@@ -64,7 +64,7 @@ public static class DbInitializer
 
         await context.SaveChangesAsync();
 
-        // Default Users
+        // 6. Default Users
         string defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Passw0rd123!");
 
         // HR User
