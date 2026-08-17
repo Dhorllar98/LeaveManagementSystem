@@ -23,7 +23,7 @@ public class LeaveTypeRepository : ILeaveTypeRepository
     {
         return await _context.LeaveTypes
             .AsNoTracking()
-            .Where(lt => lt.OrganizationId == organizationId)
+            .Where(lt => lt.OrganizationId == organizationId || lt.OrganizationId == null)
             .ToListAsync(cancellationToken);
     }
 
