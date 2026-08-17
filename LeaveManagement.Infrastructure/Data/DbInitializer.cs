@@ -8,11 +8,11 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext context)
     {
-        // 1. Force-wipe the public schema directly to destroy corrupt migration history
+        // 1. Force-wipe the public schema
         await context.Database.ExecuteSqlRawAsync("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
 
-        // 2. Re-apply all migration files sequentially from scratch
-        await context.Database.MigrateAsync();
+        // 2. Build all tables directly from current C# DbContext models (bypasses migration files)
+        await context.Database.EnsureCreatedAsync();
 
         // 3. Seed Default Organization
         var defaultOrg = await context.Organizations.FirstOrDefaultAsync(o => o.CodePrefix == "SBSC-NIG");
