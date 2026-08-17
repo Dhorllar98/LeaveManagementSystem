@@ -201,6 +201,17 @@ public class LeaveRequestsController : BaseController
     public async Task<IActionResult> CreateLeaveRequest([FromBody] CreateLeaveRequestDto dto, CancellationToken cancellationToken)
     {
         var currentUserId = GetCurrentUserId();
+        var applicant = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
+
+        if (applicant == null)
+        {
+            return Unauthorized(new { message = "User record not found." });
+        }
+
+        if (!applicant.OrganizationId.HasValue)
+        {
+            return BadRequest(new { message = "User is not assigned to an organization. Request cannot be processed." });
+        }
 
         int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate);
 
@@ -209,8 +220,7 @@ public class LeaveRequestsController : BaseController
             return BadRequest(new { message = "The selected date range does not contain any official working days (Monday - Friday)." });
         }
 
-        var applicant = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
-        if (applicant != null && applicant.LeaveBalance < businessDays)
+        if (applicant.LeaveBalance < businessDays)
         {
             return BadRequest(new { message = $"Insufficient leave balance. You requested {businessDays} working day(s), but only have {Math.Max(0, applicant.LeaveBalance)} day(s) remaining." });
         }
@@ -219,7 +229,7 @@ public class LeaveRequestsController : BaseController
         {
             Id = Guid.NewGuid(),
             EmployeeId = currentUserId,
-            OrganizationId = applicant?.OrganizationId,
+            OrganizationId = applicant.OrganizationId.Value,
             LeaveTypeId = dto.LeaveTypeId,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
@@ -232,46 +242,43 @@ public class LeaveRequestsController : BaseController
         await _leaveRepository.AddAsync(leaveRequest, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        if (applicant != null && applicant.OrganizationId.HasValue)
+        _ = Task.Run(async () =>
         {
-            _ = Task.Run(async () =>
+            try
             {
-                try
+                var settings = await _context.NotificationSettings
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.OrganizationId == applicant.OrganizationId.Value);
+
+                if (settings == null || settings.EnableNewLeaveRequestEmails)
                 {
-                    var settings = await _context.NotificationSettings
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(s => s.OrganizationId == applicant.OrganizationId.Value);
+                    var hrAndTeamLeadEmails = await _context.Users
+                        .Where(u => u.OrganizationId == applicant.OrganizationId.Value &&
+                                    (u.Role == UserRole.HR || u.Id == applicant.TeamLeadId))
+                        .Select(u => u.Email)
+                        .Distinct()
+                        .ToListAsync();
 
-                    if (settings == null || settings.EnableNewLeaveRequestEmails)
+                    string subject = $"New Leave Request - {applicant.FullName}";
+                    string body = $@"
+                        <h3>New Leave Request Submitted</h3>
+                        <p><strong>Employee:</strong> {applicant.FullName} ({applicant.EmployeeCode ?? "N/A"})</p>
+                        <p><strong>Working Days:</strong> {businessDays}</p>
+                        <p><strong>Dates:</strong> {dto.StartDate:yyyy-MM-dd} to {dto.EndDate:yyyy-MM-dd}</p>
+                        <p><strong>Reason:</strong> {dto.Reason}</p>
+                        <p>Log in to LeaveFlow to review and process this request.</p>";
+
+                    foreach (var email in hrAndTeamLeadEmails)
                     {
-                        var hrAndTeamLeadEmails = await _context.Users
-                            .Where(u => u.OrganizationId == applicant.OrganizationId.Value &&
-                                        (u.Role == UserRole.HR || u.Id == applicant.TeamLeadId))
-                            .Select(u => u.Email)
-                            .Distinct()
-                            .ToListAsync();
-
-                        string subject = $"New Leave Request - {applicant.FullName}";
-                        string body = $@"
-                            <h3>New Leave Request Submitted</h3>
-                            <p><strong>Employee:</strong> {applicant.FullName} ({applicant.EmployeeCode ?? "N/A"})</p>
-                            <p><strong>Working Days:</strong> {businessDays}</p>
-                            <p><strong>Dates:</strong> {dto.StartDate:yyyy-MM-dd} to {dto.EndDate:yyyy-MM-dd}</p>
-                            <p><strong>Reason:</strong> {dto.Reason}</p>
-                            <p>Log in to LeaveFlow to review and process this request.</p>";
-
-                        foreach (var email in hrAndTeamLeadEmails)
-                        {
-                            await _emailService.SendEmailAsync(email, subject, body);
-                        }
+                        await _emailService.SendEmailAsync(email, subject, body);
                     }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error sending new leave request notification email.");
-                }
-            }, CancellationToken.None);
-        }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending new leave request notification email.");
+            }
+        }, CancellationToken.None);
 
         var responseData = new
         {
