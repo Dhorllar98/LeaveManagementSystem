@@ -8,6 +8,7 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext context)
     {
+        await context.Database.EnsureDeletedAsync();
         await context.Database.MigrateAsync();
 
         // Seed Default Organization
