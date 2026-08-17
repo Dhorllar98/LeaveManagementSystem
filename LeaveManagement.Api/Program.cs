@@ -99,8 +99,7 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<AppDbContext>();
 
-        await context.Database.MigrateAsync();
-
+        // DbInitializer handles schema reset, migration execution, and seeding in strict order
         await DbInitializer.SeedAsync(context);
     }
     catch (Exception ex)

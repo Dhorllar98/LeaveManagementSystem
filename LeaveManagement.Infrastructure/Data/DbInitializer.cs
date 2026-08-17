@@ -8,10 +8,10 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext context)
     {
-        // 1. Force-wipe the public schema directly inside the active connection
+        // 1. Force-wipe the public schema directly to destroy corrupt migration history
         await context.Database.ExecuteSqlRawAsync("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
 
-        // 2. Run all migrations from scratch onto the clean schema
+        // 2. Re-apply all migration files sequentially from scratch
         await context.Database.MigrateAsync();
 
         // 3. Seed Default Organization
