@@ -83,7 +83,11 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = string.Empty;
 });
 
-app.UseHttpsRedirection();
+// Avoid HTTPS redirection warnings on reverse proxies like Render
+if (!app.Environment.IsProduction())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseRateLimiter();
 
@@ -92,14 +96,14 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-using (var scope = app.Services.CreateScope())
+// Run database initialization in a background task so app.Run() binds the port immediately
+_ = Task.Run(async () =>
 {
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
     try
     {
         var context = services.GetRequiredService<AppDbContext>();
-
-        // DbInitializer handles schema reset, migration execution, and seeding in strict order
         await DbInitializer.SeedAsync(context);
     }
     catch (Exception ex)
@@ -107,6 +111,6 @@ using (var scope = app.Services.CreateScope())
         var logger = services.GetRequiredService<ILogger<Program>>();
         logger.LogError(ex, "An error occurred while migrating or seeding the database.");
     }
-}
+});
 
 app.Run();
