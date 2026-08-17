@@ -8,7 +8,12 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext context)
     {
-        await context.Database.EnsureDeletedAsync();
+        // Direct DDL execution to guarantee the column exists regardless of migration history
+        await context.Database.ExecuteSqlRawAsync(@"
+            ALTER TABLE ""Departments"" 
+            ADD COLUMN IF NOT EXISTS ""OrganizationId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000';
+        ");
+
         await context.Database.MigrateAsync();
 
         // Seed Default Organization
