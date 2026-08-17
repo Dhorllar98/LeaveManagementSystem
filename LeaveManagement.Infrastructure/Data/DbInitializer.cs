@@ -8,15 +8,13 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext context)
     {
-        // Direct DDL execution to guarantee the column exists regardless of migration history
-        await context.Database.ExecuteSqlRawAsync(@"
-            ALTER TABLE ""Departments"" 
-            ADD COLUMN IF NOT EXISTS ""OrganizationId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000';
-        ");
+        // 1. Force-wipe the public schema directly inside the active connection
+        await context.Database.ExecuteSqlRawAsync("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
 
+        // 2. Run all migrations from scratch onto the clean schema
         await context.Database.MigrateAsync();
 
-        // Seed Default Organization
+        // 3. Seed Default Organization
         var defaultOrg = await context.Organizations.FirstOrDefaultAsync(o => o.CodePrefix == "SBSC-NIG");
         if (defaultOrg == null)
         {
@@ -53,7 +51,6 @@ public static class DbInitializer
         Department engDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Engineering")
                              ?? new Department { Id = Guid.NewGuid(), Name = "Engineering", OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow };
 
-        // Ensure OrganizationId is populated for both new and existing departments
         hrDept.OrganizationId = defaultOrg.Id;
         engDept.OrganizationId = defaultOrg.Id;
 
@@ -62,7 +59,7 @@ public static class DbInitializer
 
         await context.SaveChangesAsync();
 
-        // Guarantees creation AND valid password hashes
+        // Default Users
         string defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Passw0rd123!");
 
         // HR User
