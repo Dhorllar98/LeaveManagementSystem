@@ -28,6 +28,10 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+        var orgIdString = user.OrganizationId != null && user.OrganizationId != Guid.Empty
+            ? user.OrganizationId.Value.ToString()
+            : throw new InvalidOperationException("User must be assigned to an Organization.");
+
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
@@ -37,7 +41,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             new Claim(ClaimTypes.Name, user.FullName),
             new Claim(JwtRegisteredClaimNames.Name, user.FullName),
             new Claim(ClaimTypes.Role, user.Role.ToString()),
-            new Claim("OrganizationId", user.OrganizationId?.ToString() ?? string.Empty),
+            new Claim("OrganizationId", orgIdString),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
