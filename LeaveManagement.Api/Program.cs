@@ -96,20 +96,31 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Run database initialization in a background task so app.Run() binds the port immediately
+// Run database initialization in a non-blocking background task
 _ = Task.Run(async () =>
 {
+    // Brief delay to ensure Kestrel has bound to the port and host pipeline is active
+    await Task.Delay(2000);
+
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+
     try
     {
         var context = services.GetRequiredService<AppDbContext>();
+
+        logger.LogInformation("Applying pending database migrations...");
+        await context.Database.MigrateAsync();
+
+        logger.LogInformation("Seeding database initial data...");
         await DbInitializer.SeedAsync(context);
+
+        logger.LogInformation("Database migration and seeding completed successfully.");
     }
     catch (Exception ex)
     {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while migrating or seeding the database.");
+        logger.LogError(ex, "CRITICAL: An error occurred while migrating or seeding the database.");
     }
 });
 
