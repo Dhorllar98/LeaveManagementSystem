@@ -10,7 +10,7 @@ public static class DbInitializer
     {
         await context.Database.MigrateAsync();
 
-        //Seed Default Organization
+        // Seed Default Organization
         var defaultOrg = await context.Organizations.FirstOrDefaultAsync(o => o.CodePrefix == "SBSC-NIG");
         if (defaultOrg == null)
         {
@@ -42,17 +42,21 @@ public static class DbInitializer
 
         // Default Departments
         Department hrDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Human Resources")
-                            ?? new Department { Id = Guid.NewGuid(), Name = "Human Resources", CreatedAt = DateTime.UtcNow };
+                            ?? new Department { Id = Guid.NewGuid(), Name = "Human Resources", OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow };
 
         Department engDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Engineering")
-                             ?? new Department { Id = Guid.NewGuid(), Name = "Engineering", CreatedAt = DateTime.UtcNow };
+                             ?? new Department { Id = Guid.NewGuid(), Name = "Engineering", OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow };
+
+        // Ensure OrganizationId is populated for both new and existing departments
+        hrDept.OrganizationId = defaultOrg.Id;
+        engDept.OrganizationId = defaultOrg.Id;
 
         if (context.Entry(hrDept).State == EntityState.Detached) await context.Departments.AddAsync(hrDept);
         if (context.Entry(engDept).State == EntityState.Detached) await context.Departments.AddAsync(engDept);
 
         await context.SaveChangesAsync();
 
-        //(Guarantees creation AND valid password hashes)
+        // Guarantees creation AND valid password hashes
         string defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Passw0rd123!");
 
         // HR User
