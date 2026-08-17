@@ -10,7 +10,7 @@ public static class DbInitializer
     {
         await context.Database.MigrateAsync();
 
-        // 1. Seed Default Organization (SBSC NIG)
+        //Seed Default Organization
         var defaultOrg = await context.Organizations.FirstOrDefaultAsync(o => o.CodePrefix == "SBSC-NIG");
         if (defaultOrg == null)
         {
@@ -19,7 +19,7 @@ public static class DbInitializer
                 Id = Guid.NewGuid(),
                 Name = "SBSC NIG",
                 CodePrefix = "SBSC-NIG",
-                LastEmployeeNumber = 3, 
+                LastEmployeeNumber = 3,
                 CreatedAt = DateTime.UtcNow
             };
             await context.Organizations.AddAsync(defaultOrg);
@@ -31,27 +31,9 @@ public static class DbInitializer
         {
             var leaveTypes = new List<LeaveType>
             {
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    Name = "Annual Leave",
-                    DefaultDays = 20,
-                    CreatedAt = DateTime.UtcNow
-                },
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    Name = "Sick Leave",
-                    DefaultDays = 10,
-                    CreatedAt = DateTime.UtcNow
-                },
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    Name = "Maternity/Paternity Leave",
-                    DefaultDays = 30,
-                    CreatedAt = DateTime.UtcNow
-                }
+                new() { Id = Guid.NewGuid(), Name = "Annual Leave", DefaultDays = 20, CreatedAt = DateTime.UtcNow },
+                new() { Id = Guid.NewGuid(), Name = "Sick Leave", DefaultDays = 10, CreatedAt = DateTime.UtcNow },
+                new() { Id = Guid.NewGuid(), Name = "Maternity/Paternity Leave", DefaultDays = 30, CreatedAt = DateTime.UtcNow }
             };
 
             await context.LeaveTypes.AddRangeAsync(leaveTypes);
@@ -59,104 +41,61 @@ public static class DbInitializer
         }
 
         // Default Departments
-        Department? hrDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Human Resources");
-        Department? engDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Engineering");
+        Department hrDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Human Resources")
+                            ?? new Department { Id = Guid.NewGuid(), Name = "Human Resources", CreatedAt = DateTime.UtcNow };
 
-        if (hrDept == null)
-        {
-            hrDept = new Department { Id = Guid.NewGuid(), Name = "Human Resources", CreatedAt = DateTime.UtcNow };
-            await context.Departments.AddAsync(hrDept);
-        }
+        Department engDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Engineering")
+                             ?? new Department { Id = Guid.NewGuid(), Name = "Engineering", CreatedAt = DateTime.UtcNow };
 
-        if (engDept == null)
-        {
-            engDept = new Department { Id = Guid.NewGuid(), Name = "Engineering", CreatedAt = DateTime.UtcNow };
-            await context.Departments.AddAsync(engDept);
-        }
+        if (context.Entry(hrDept).State == EntityState.Detached) await context.Departments.AddAsync(hrDept);
+        if (context.Entry(engDept).State == EntityState.Detached) await context.Departments.AddAsync(engDept);
 
         await context.SaveChangesAsync();
 
-        // 4. Update Existing Users OR Add New Ones
+        //(Guarantees creation AND valid password hashes)
         string defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Passw0rd123!");
 
+        // HR User
         var hrUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "hr@admin.com");
+        if (hrUser == null)
+        {
+            hrUser = new User { Id = Guid.NewGuid(), Email = "hr@admin.com", FullName = "Admin HR Manager", Role = UserRole.HR, CreatedAt = DateTime.UtcNow };
+            await context.Users.AddAsync(hrUser);
+        }
+        hrUser.PasswordHash = defaultPasswordHash;
+        hrUser.DepartmentId = hrDept.Id;
+        hrUser.Designation = "HR Manager";
+        hrUser.OrganizationId = defaultOrg.Id;
+        hrUser.EmployeeCode = "SBSC-NIG-01";
+        hrUser.LeaveBalance = 20;
+
+        // Team Lead User
         var leadUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "teamlead@company.com");
+        if (leadUser == null)
+        {
+            leadUser = new User { Id = Guid.NewGuid(), Email = "teamlead@company.com", FullName = "Sarah Jenkins", Role = UserRole.TeamLead, CreatedAt = DateTime.UtcNow };
+            await context.Users.AddAsync(leadUser);
+        }
+        leadUser.PasswordHash = defaultPasswordHash;
+        leadUser.DepartmentId = engDept.Id;
+        leadUser.Designation = "Lead Engineer";
+        leadUser.OrganizationId = defaultOrg.Id;
+        leadUser.EmployeeCode = "SBSC-NIG-02";
+        leadUser.LeaveBalance = 20;
+
+        // Employee User
         var empUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "john.doe@user.com");
-
-        if (hrUser != null)
+        if (empUser == null)
         {
-            hrUser.DepartmentId = hrDept.Id;
-            hrUser.Designation = "HR Manager";
-            hrUser.OrganizationId = defaultOrg.Id;
-            hrUser.EmployeeCode = "SBSC-NIG-01";
+            empUser = new User { Id = Guid.NewGuid(), Email = "john.doe@user.com", FullName = "John Doe", Role = UserRole.Employee, CreatedAt = DateTime.UtcNow };
+            await context.Users.AddAsync(empUser);
         }
-
-        if (leadUser != null)
-        {
-            leadUser.DepartmentId = engDept.Id;
-            leadUser.Designation = "Lead Engineer";
-            leadUser.OrganizationId = defaultOrg.Id;
-            leadUser.EmployeeCode = "SBSC-NIG-02";
-        }
-
-        if (empUser != null)
-        {
-            empUser.DepartmentId = engDept.Id;
-            empUser.Designation = "Backend Engineer";
-            empUser.OrganizationId = defaultOrg.Id;
-            empUser.EmployeeCode = "SBSC-NIG-03";
-        }
-
-        if (!await context.Users.AnyAsync())
-        {
-            var defaultUsers = new List<User>
-            {
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    FullName = "Admin HR Manager",
-                    Email = "hr@admin.com",
-                    PasswordHash = defaultPasswordHash,
-                    Role = UserRole.HR,
-                    DepartmentId = hrDept.Id,
-                    Designation = "HR Manager",
-                    OrganizationId = defaultOrg.Id,
-                    EmployeeCode = "SBSC-NIG-01",
-                    LeaveBalance = 20,
-                    CreatedAt = DateTime.UtcNow
-                },
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    FullName = "Sarah Jenkins",
-                    Email = "teamlead@company.com",
-                    PasswordHash = defaultPasswordHash,
-                    Role = UserRole.TeamLead,
-                    DepartmentId = engDept.Id,
-                    Designation = "Lead Engineer",
-                    OrganizationId = defaultOrg.Id,
-                    EmployeeCode = "SBSC-NIG-02",
-                    LeaveBalance = 20,
-                    CreatedAt = DateTime.UtcNow
-                },
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    FullName = "John Doe",
-                    Email = "john.doe@user.com",
-                    PasswordHash = defaultPasswordHash,
-                    Role = UserRole.Employee,
-                    DepartmentId = engDept.Id,
-                    Designation = "Backend Engineer",
-                    OrganizationId = defaultOrg.Id,
-                    EmployeeCode = "SBSC-NIG-03",
-                    LeaveBalance = 20,
-                    CreatedAt = DateTime.UtcNow
-                }
-            };
-
-            await context.Users.AddRangeAsync(defaultUsers);
-        }
+        empUser.PasswordHash = defaultPasswordHash;
+        empUser.DepartmentId = engDept.Id;
+        empUser.Designation = "Backend Engineer";
+        empUser.OrganizationId = defaultOrg.Id;
+        empUser.EmployeeCode = "SBSC-NIG-03";
+        empUser.LeaveBalance = 20;
 
         await context.SaveChangesAsync();
     }
