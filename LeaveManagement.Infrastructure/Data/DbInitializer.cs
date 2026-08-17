@@ -9,7 +9,8 @@ public static class DbInitializer
     public static async Task SeedAsync(AppDbContext context)
     {
         // 1. Force-wipe the public schema
-        await context.Database.ExecuteSqlRawAsync("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+        // I'M COMMENTING OUT THIS LINE BELOW AFTER THE DB MIGRATION ERROR WAS FIXED SO POSTGRESSQL DOESN'T WIPE THE DATA AND RESEED EVERYTIME RENDER SLEPS AND WAKES AGAIN
+        //await context.Database.ExecuteSqlRawAsync("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
 
         // 2. Build all tables directly from current C# DbContext models (bypasses migration files)
         await context.Database.EnsureCreatedAsync();
