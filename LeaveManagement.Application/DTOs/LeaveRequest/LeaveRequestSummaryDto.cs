@@ -11,6 +11,7 @@ public class LeaveRequestSummaryDto
     public Guid Id { get; set; }
     public Guid EmployeeId { get; set; }
     public string EmployeeName { get; set; } = string.Empty;
+    public string EmployeeCode { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
 
     public Guid LeaveTypeId { get; set; }

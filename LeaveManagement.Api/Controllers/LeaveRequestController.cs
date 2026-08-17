@@ -74,6 +74,7 @@ public class LeaveRequestsController : BaseController
             Id = l.Id,
             EmployeeId = l.EmployeeId,
             EmployeeName = l.Employee?.FullName ?? "N/A",
+            EmployeeCode = l.Employee?.EmployeeCode ?? (l.EmployeeId != Guid.Empty ? l.EmployeeId.ToString().Substring(0, 8) : "N/A"),
             Department = l.Employee?.Department?.Name ?? "Unassigned",
             LeaveTypeId = l.LeaveTypeId,
             LeaveTypeName = l.LeaveType?.Name ?? "N/A",
@@ -106,7 +107,6 @@ public class LeaveRequestsController : BaseController
         });
     }
 
-    // HR DEDICATED COMPANY OVERVIEW
     [HttpGet("all")]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> GetTotalRequestsForHR([FromQuery] LeaveRequestQueryParameters query, CancellationToken cancellationToken)
@@ -130,6 +130,7 @@ public class LeaveRequestsController : BaseController
             Id = l.Id,
             EmployeeId = l.EmployeeId,
             EmployeeName = l.Employee?.FullName ?? "N/A",
+            EmployeeCode = l.Employee?.EmployeeCode ?? (l.EmployeeId != Guid.Empty ? l.EmployeeId.ToString().Substring(0, 8) : "N/A"),
             Department = l.Employee?.Department?.Name ?? "Unassigned",
             LeaveTypeId = l.LeaveTypeId,
             LeaveTypeName = l.LeaveType?.Name ?? "N/A",
@@ -169,7 +170,7 @@ public class LeaveRequestsController : BaseController
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
 
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
-        if (leave == null || leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId)
+        if (leave == null || (leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId))
             return NotFound(new { message = "Leave request not found." });
 
         var summary = new LeaveRequestSummaryDto
@@ -177,6 +178,7 @@ public class LeaveRequestsController : BaseController
             Id = leave.Id,
             EmployeeId = leave.EmployeeId,
             EmployeeName = leave.Employee?.FullName ?? "N/A",
+            EmployeeCode = leave.Employee?.EmployeeCode ?? (leave.EmployeeId != Guid.Empty ? leave.EmployeeId.ToString().Substring(0, 8) : "N/A"),
             Department = leave.Employee?.Department?.Name ?? "Unassigned",
             LeaveTypeId = leave.LeaveTypeId,
             LeaveTypeName = leave.LeaveType?.Name ?? "N/A",
@@ -344,7 +346,7 @@ public class LeaveRequestsController : BaseController
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
 
-        if (leave == null || leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId)
+        if (leave == null || (leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId))
             return NotFound(new { message = "Leave request not found." });
 
         var currentUserId = GetCurrentUserId();
@@ -372,7 +374,7 @@ public class LeaveRequestsController : BaseController
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
 
-        if (leave == null || leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId)
+        if (leave == null || (leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId))
             return NotFound(new { message = "Leave request not found." });
 
         var currentUserId = GetCurrentUserId();
@@ -449,7 +451,7 @@ public class LeaveRequestsController : BaseController
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
 
-        if (leave == null || leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId)
+        if (leave == null || (leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId))
             return NotFound(new { message = "Leave request not found." });
 
         var currentUserId = GetCurrentUserId();

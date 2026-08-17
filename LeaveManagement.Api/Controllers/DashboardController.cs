@@ -91,8 +91,8 @@ public class DashboardController : BaseController
             ApprovedRequestsCount = orgLeaves.Count(l => l.Status == LeaveStatus.Approved),
             RejectedRequestsCount = orgLeaves.Count(l => l.Status == LeaveStatus.Rejected),
             EmployeesCurrentlyOnLeave = orgLeaves.Count(l => l.Status == LeaveStatus.Approved
-                                                            && l.StartDate.Date <= today
-                                                            && l.EndDate.Date >= today)
+                                                             && l.StartDate.Date <= today
+                                                             && l.EndDate.Date >= today)
         };
 
         return Ok(ApiResponse<AdminDashboardResponseDto>.SuccessResponse(stats, "Admin stats retrieved successfully."));
