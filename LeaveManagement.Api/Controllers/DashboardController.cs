@@ -2,8 +2,10 @@
 using LeaveManagement.Application.DTOs.Dashboard;
 using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
+using LeaveManagement.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeaveManagement.Api.Controllers;
 
@@ -14,14 +16,18 @@ public class DashboardController : BaseController
 {
     private readonly ILeaveRequestRepository _leaveRepository;
     private readonly IUserRepository _userRepository;
+    private readonly AppDbContext _context;
 
-    public DashboardController(ILeaveRequestRepository leaveRepository, IUserRepository userRepository)
+    public DashboardController(
+        ILeaveRequestRepository leaveRepository,
+        IUserRepository userRepository,
+        AppDbContext context)
     {
         _leaveRepository = leaveRepository;
         _userRepository = userRepository;
+        _context = context;
     }
 
-    // Accessible by all authenticated roles (Employee, TeamLead, HR)
     [HttpGet("user-stats")]
     public async Task<IActionResult> GetUserDashboardStats(CancellationToken cancellationToken)
     {
@@ -32,7 +38,6 @@ public class DashboardController : BaseController
         if (user == null)
             return NotFound(ApiResponse<string>.FailureResponse("User not found."));
 
-        // Uses your existing repository method: GetByEmployeeIdAsync
         var userRequests = await _leaveRepository.GetByEmployeeIdAsync(userId, cancellationToken)
                            ?? new List<Domain.Entities.LeaveRequest>();
 
@@ -48,7 +53,6 @@ public class DashboardController : BaseController
         return Ok(ApiResponse<DashboardResponseDto>.SuccessResponse(stats, "User stats retrieved successfully."));
     }
 
-    // Accessible strictly by HR role
     [HttpGet("admin-stats")]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> GetAdminDashboardStats(CancellationToken cancellationToken)
@@ -56,7 +60,10 @@ public class DashboardController : BaseController
         var currentUserId = GetCurrentUserId();
         if (currentUserId == Guid.Empty) return Unauthorized();
 
-        var adminUser = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
+        var adminUser = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+
         if (adminUser?.OrganizationId == null)
         {
             return BadRequest(ApiResponse<string>.FailureResponse("User organization not found."));
@@ -64,10 +71,17 @@ public class DashboardController : BaseController
 
         var orgId = adminUser.OrganizationId.Value;
 
-        var orgLeaves = (await _leaveRepository.GetAllByOrganizationAsync(orgId, cancellationToken))?.ToList()
-                        ?? new List<Domain.Entities.LeaveRequest>();
-        var orgUsers = (await _userRepository.GetAllByOrganizationAsync(orgId, cancellationToken))?.ToList()
-                       ?? new List<Domain.Entities.User>();
+        var orgLeaves = await _context.LeaveRequests
+            .AsNoTracking()
+            .Where(l => l.OrganizationId == orgId)
+            .ToListAsync(cancellationToken);
+
+        var orgUsers = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.OrganizationId == orgId)
+            .ToListAsync(cancellationToken);
+
+        var today = DateTime.UtcNow.Date;
 
         var stats = new AdminDashboardResponseDto
         {
@@ -77,8 +91,8 @@ public class DashboardController : BaseController
             ApprovedRequestsCount = orgLeaves.Count(l => l.Status == LeaveStatus.Approved),
             RejectedRequestsCount = orgLeaves.Count(l => l.Status == LeaveStatus.Rejected),
             EmployeesCurrentlyOnLeave = orgLeaves.Count(l => l.Status == LeaveStatus.Approved
-                                                            && l.StartDate <= DateTime.UtcNow
-                                                            && l.EndDate >= DateTime.UtcNow)
+                                                            && l.StartDate.Date <= today
+                                                            && l.EndDate.Date >= today)
         };
 
         return Ok(ApiResponse<AdminDashboardResponseDto>.SuccessResponse(stats, "Admin stats retrieved successfully."));

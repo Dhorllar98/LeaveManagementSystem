@@ -32,18 +32,26 @@ public class ProfileController : BaseController
 
         if (user == null) return NotFound(new { message = "Profile not found." });
 
-        return Ok(new
+        var formattedCode = !string.IsNullOrWhiteSpace(user.EmployeeCode) ? user.EmployeeCode : user.Id.ToString();
+        var department = user.Department?.Name ?? "Human Resources";
+
+        var profile = new ProfileResponseDto
         {
-            user.Id,
-            user.FullName,
-            user.Email,
-            user.EmployeeCode,
-            user.Designation,
-            user.LeaveBalance,
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
             Role = user.Role.ToString(),
-            DepartmentName = user.Department?.Name,
-            user.OrganizationId
-        });
+            Department = department,
+            DepartmentName = department,
+            Designation = !string.IsNullOrWhiteSpace(user.Designation) ? user.Designation : user.Role.ToString(),
+            EmployeeCode = formattedCode,
+            EmployeeId = formattedCode,
+            LeaveBalance = user.LeaveBalance,
+            CreatedAt = user.CreatedAt,
+            OrganizationId = user.OrganizationId
+        };
+
+        return Ok(profile);
     }
 
     [HttpPut]
@@ -52,25 +60,21 @@ public class ProfileController : BaseController
         var currentUserId = GetCurrentUserId();
         if (currentUserId == Guid.Empty) return Unauthorized();
 
-        // Fetch the user making the request to get their OrganizationId and Role
         var currentUser = await _context.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
 
         if (currentUser == null) return Unauthorized();
 
-        // Determine which user we are trying to update
         var targetUserId = dto.UserId.HasValue && dto.UserId.Value != Guid.Empty
             ? dto.UserId.Value
             : currentUserId;
 
-        // ROLE CHECK: Prevent standard employees from updating others (Only HR allowed)
         if (targetUserId != currentUserId && currentUser.Role != UserRole.HR)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "You do not have permission to update other users' profiles." });
         }
 
-        // 4. 🔒 STRICT TENANT FILTER: Ensure the target user belongs to the same organization
         var targetUser = await _context.Users
             .FirstOrDefaultAsync(u => u.Id == targetUserId && u.OrganizationId == currentUser.OrganizationId, cancellationToken);
 
