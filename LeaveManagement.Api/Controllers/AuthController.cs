@@ -3,13 +3,12 @@ using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore; 
+using Microsoft.EntityFrameworkCore;
 
 namespace LeaveManagement.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-
 public class AuthController : BaseController
 {
     private readonly IAuthService _authService;
@@ -17,6 +16,13 @@ public class AuthController : BaseController
     public AuthController(IAuthService authService)
     {
         _authService = authService;
+    }
+
+    [HttpPost("register-organization")]
+    public async Task<IActionResult> RegisterOrganization([FromBody] RegisterOrganizationDto request, CancellationToken cancellationToken)
+    {
+        var response = await _authService.RegisterOrganizationAsync(request, cancellationToken);
+        return Ok(response);
     }
 
     [HttpPost("register")]
@@ -51,7 +57,7 @@ public class AuthController : BaseController
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
-        user.PasswordResetToken = null; 
+        user.PasswordResetToken = null;
         user.ResetTokenExpiresAt = null;
         user.UpdatedAt = DateTime.UtcNow;
 

@@ -8,14 +8,10 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext context)
     {
-        // 1. Force-wipe the public schema
-        // I'M COMMENTING OUT THIS LINE BELOW AFTER THE DB MIGRATION ERROR WAS FIXED SO POSTGRESSQL DOESN'T WIPE THE DATA AND RESEED EVERYTIME RENDER SLEPS AND WAKES AGAIN
-        //await context.Database.ExecuteSqlRawAsync("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
-
-        // 2. Build all tables directly from current C# DbContext models (bypasses migration files)
+        //Build all tables directly from current C# DbContext models
         await context.Database.EnsureCreatedAsync();
 
-        // 3. Seed Default Organization
+        // Seed Default Organization
         var defaultOrg = await context.Organizations.FirstOrDefaultAsync(o => o.CodePrefix == "SBSC-NIG");
         if (defaultOrg == null)
         {
@@ -30,6 +26,14 @@ public static class DbInitializer
             await context.Organizations.AddAsync(defaultOrg);
             await context.SaveChangesAsync();
         }
+
+        // AUTO-BACKFILL STEP: Assign orphaned NULL records to the default organization
+        // Parameterized ({0}) to safely pass the Guid without triggering EF1002 warnings
+        await context.Database.ExecuteSqlRawAsync(@"
+               UPDATE ""Users"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
+               UPDATE ""LeaveRequests"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
+               UPDATE ""Departments"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
+                            ", defaultOrg.Id);
 
         // Leave Types
         if (!await context.LeaveTypes.AnyAsync())
