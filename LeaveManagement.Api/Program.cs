@@ -80,7 +80,7 @@ app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Leave Management API V1");
-    c.RoutePrefix = string.Empty;
+    c.RoutePrefix = "swagger";
 });
 
 // Avoid HTTPS redirection warnings on reverse proxies like Render
@@ -96,13 +96,9 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Run database initialization in a non-blocking background task
-_ = Task.Run(async () =>
+// Run database migration and seeding synchronously BEFORE the app starts listening
+using (var scope = app.Services.CreateScope())
 {
-    // Brief delay to ensure Kestrel has bound to the port and host pipeline is active
-    await Task.Delay(2000);
-
-    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
     var logger = services.GetRequiredService<ILogger<Program>>();
 
@@ -122,6 +118,6 @@ _ = Task.Run(async () =>
     {
         logger.LogError(ex, "CRITICAL: An error occurred while migrating or seeding the database.");
     }
-});
+}
 
 app.Run();
