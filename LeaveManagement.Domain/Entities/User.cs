@@ -6,7 +6,7 @@ public class User
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    public string? EmployeeCode { get; set; } // e.g. "SBSC-UK-01"
+    public string? EmployeeCode { get; set; } // e.g. "SBSC-NIG-01"
     public Guid? OrganizationId { get; set; }
     public Organization? Organization { get; set; }
 

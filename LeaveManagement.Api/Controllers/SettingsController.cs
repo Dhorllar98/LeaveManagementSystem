@@ -1,9 +1,7 @@
 ﻿using LeaveManagement.Application.DTOs.Settings;
-using LeaveManagement.Domain.Entities;
-using LeaveManagement.Infrastructure.Data;
+using LeaveManagement.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace LeaveManagement.Api.Controllers;
 
@@ -12,11 +10,11 @@ namespace LeaveManagement.Api.Controllers;
 [Authorize]
 public class SettingsController : BaseController
 {
-    private readonly AppDbContext _context;
+    private readonly ISettingsService _settingsService;
 
-    public SettingsController(AppDbContext context)
+    public SettingsController(ISettingsService settingsService)
     {
-        _context = context;
+        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -27,26 +25,14 @@ public class SettingsController : BaseController
     public async Task<IActionResult> GetNotificationSettings(CancellationToken cancellationToken)
     {
         var currentUserId = GetCurrentUserId();
-        var user = await _context.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+        var settings = await _settingsService.GetNotificationSettingsAsync(currentUserId, cancellationToken);
 
-        if (user?.OrganizationId == null)
+        if (settings == null)
         {
             return BadRequest(new { success = false, message = "User organization not found." });
         }
 
-        var settings = await _context.NotificationSettings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.OrganizationId == user.OrganizationId.Value, cancellationToken);
-
-        var response = new NotificationSettingsDto
-        {
-            EnableNewLeaveRequestEmails = settings?.EnableNewLeaveRequestEmails ?? true,
-            EnableLeaveStatusUpdateEmails = settings?.EnableLeaveStatusUpdateEmails ?? true
-        };
-
-        return Ok(new { success = true, data = response });
+        return Ok(new { success = true, data = settings });
     }
 
     /// <summary>
@@ -59,46 +45,18 @@ public class SettingsController : BaseController
         CancellationToken cancellationToken)
     {
         var currentUserId = GetCurrentUserId();
-        var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+        var (success, message, data) = await _settingsService.UpdateNotificationSettingsAsync(currentUserId, dto, cancellationToken);
 
-        if (user?.OrganizationId == null)
+        if (!success)
         {
-            return BadRequest(new { success = false, message = "User organization not found." });
+            return BadRequest(new { success = false, message });
         }
-
-        var settings = await _context.NotificationSettings
-            .FirstOrDefaultAsync(s => s.OrganizationId == user.OrganizationId.Value, cancellationToken);
-
-        if (settings == null)
-        {
-            settings = new NotificationSetting
-            {
-                Id = Guid.NewGuid(),
-                OrganizationId = user.OrganizationId.Value,
-                EnableNewLeaveRequestEmails = dto.EnableNewLeaveRequestEmails,
-                EnableLeaveStatusUpdateEmails = dto.EnableLeaveStatusUpdateEmails,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            await _context.NotificationSettings.AddAsync(settings, cancellationToken);
-        }
-        else
-        {
-            settings.EnableNewLeaveRequestEmails = dto.EnableNewLeaveRequestEmails;
-            settings.EnableLeaveStatusUpdateEmails = dto.EnableLeaveStatusUpdateEmails;
-            settings.UpdatedAt = DateTime.UtcNow;
-
-            _context.NotificationSettings.Update(settings);
-        }
-
-        await _context.SaveChangesAsync(cancellationToken);
 
         return Ok(new
         {
             success = true,
-            message = "Notification settings updated successfully.",
-            data = dto
+            message,
+            data
         });
     }
 }

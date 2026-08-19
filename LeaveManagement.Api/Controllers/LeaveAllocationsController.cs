@@ -1,5 +1,5 @@
 ﻿using LeaveManagement.Application.DTOs.LeaveAllocation;
-using LeaveManagement.Domain.Entities;
+using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,18 +11,15 @@ namespace LeaveManagement.Api.Controllers;
 [Authorize]
 public class LeaveAllocationsController : BaseController
 {
-    private readonly ILeaveAllocationRepository _repository;
+    private readonly ILeaveAllocationService _allocationService;
     private readonly IUserRepository _userRepository;
-    private readonly IUnitOfWork _unitOfWork;
 
     public LeaveAllocationsController(
-        ILeaveAllocationRepository repository,
-        IUserRepository userRepository,
-        IUnitOfWork unitOfWork)
+        ILeaveAllocationService allocationService,
+        IUserRepository userRepository)
     {
-        _repository = repository;
+        _allocationService = allocationService;
         _userRepository = userRepository;
-        _unitOfWork = unitOfWork;
     }
 
     private async Task<Guid?> GetUserOrganizationIdAsync(CancellationToken cancellationToken)
@@ -41,18 +38,7 @@ public class LeaveAllocationsController : BaseController
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var allocations = await _repository.GetAllByOrganizationAsync(orgId.Value, cancellationToken);
-        var result = allocations.Select(la => new LeaveAllocationDto
-        {
-            Id = la.Id,
-            NumberOfDays = la.NumberOfDays,
-            Period = la.Period,
-            EmployeeId = la.EmployeeId,
-            EmployeeName = la.Employee?.FullName ?? string.Empty,
-            LeaveTypeId = la.LeaveTypeId,
-            LeaveTypeName = la.LeaveType?.Name ?? string.Empty
-        });
-
+        var result = await _allocationService.GetAllocationsByOrganizationAsync(orgId.Value, cancellationToken);
         return Ok(result);
     }
 
@@ -60,20 +46,12 @@ public class LeaveAllocationsController : BaseController
     public async Task<ActionResult<LeaveAllocationDto>> GetLeaveAllocation(Guid id, CancellationToken cancellationToken)
     {
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var allocation = await _repository.GetByIdAsync(id, cancellationToken);
-        if (allocation == null || allocation.Employee?.OrganizationId != orgId) return NotFound();
+        var allocation = await _allocationService.GetAllocationByIdAsync(id, orgId.Value, cancellationToken);
+        if (allocation == null) return NotFound();
 
-        return Ok(new LeaveAllocationDto
-        {
-            Id = allocation.Id,
-            NumberOfDays = allocation.NumberOfDays,
-            Period = allocation.Period,
-            EmployeeId = allocation.EmployeeId,
-            EmployeeName = allocation.Employee?.FullName ?? string.Empty,
-            LeaveTypeId = allocation.LeaveTypeId,
-            LeaveTypeName = allocation.LeaveType?.Name ?? string.Empty
-        });
+        return Ok(allocation);
     }
 
     [HttpPost]
@@ -81,45 +59,12 @@ public class LeaveAllocationsController : BaseController
     public async Task<ActionResult<LeaveAllocationDto>> CreateLeaveAllocation([FromBody] CreateLeaveAllocationDto dto, CancellationToken cancellationToken)
     {
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        // Ensure the target employee belongs to the same organization
-        var targetEmployee = await _userRepository.GetByIdAsync(dto.EmployeeId, cancellationToken);
-        if (targetEmployee == null || targetEmployee.OrganizationId != orgId)
-        {
-            return BadRequest(new { message = "Invalid employee or employee does not belong to your organization." });
-        }
+        var (success, errorMessage, data) = await _allocationService.CreateAllocationAsync(dto, orgId.Value, cancellationToken);
+        if (!success) return BadRequest(new { message = errorMessage });
 
-        var exists = await _repository.AllocationExistsAsync(dto.EmployeeId, dto.LeaveTypeId, dto.Period, cancellationToken);
-        if (exists)
-        {
-            return BadRequest(new { message = "An allocation for this leave type and period already exists for this employee." });
-        }
-
-        var allocation = new LeaveAllocation
-        {
-            NumberOfDays = dto.NumberOfDays,
-            Period = dto.Period,
-            EmployeeId = dto.EmployeeId,
-            LeaveTypeId = dto.LeaveTypeId
-        };
-
-        await _repository.AddAsync(allocation, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        var createdAllocation = await _repository.GetByIdAsync(allocation.Id, cancellationToken);
-
-        var result = new LeaveAllocationDto
-        {
-            Id = createdAllocation!.Id,
-            NumberOfDays = createdAllocation.NumberOfDays,
-            Period = createdAllocation.Period,
-            EmployeeId = createdAllocation.EmployeeId,
-            EmployeeName = createdAllocation.Employee?.FullName ?? string.Empty,
-            LeaveTypeId = createdAllocation.LeaveTypeId,
-            LeaveTypeName = createdAllocation.LeaveType?.Name ?? string.Empty
-        };
-
-        return CreatedAtAction(nameof(GetLeaveAllocation), new { id = allocation.Id }, result);
+        return CreatedAtAction(nameof(GetLeaveAllocation), new { id = data!.Id }, data);
     }
 
     [HttpPut("{id:guid}")]
@@ -127,14 +72,10 @@ public class LeaveAllocationsController : BaseController
     public async Task<IActionResult> UpdateLeaveAllocation(Guid id, UpdateLeaveAllocationDto dto, CancellationToken cancellationToken)
     {
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var allocation = await _repository.GetByIdAsync(id, cancellationToken);
-        if (allocation == null || allocation.Employee?.OrganizationId != orgId) return NotFound();
-
-        allocation.NumberOfDays = dto.NumberOfDays;
-
-        _repository.Update(allocation);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        var success = await _allocationService.UpdateAllocationAsync(id, dto, orgId.Value, cancellationToken);
+        if (!success) return NotFound();
 
         return NoContent();
     }
@@ -144,12 +85,10 @@ public class LeaveAllocationsController : BaseController
     public async Task<IActionResult> DeleteLeaveAllocation(Guid id, CancellationToken cancellationToken)
     {
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var allocation = await _repository.GetByIdAsync(id, cancellationToken);
-        if (allocation == null || allocation.Employee?.OrganizationId != orgId) return NotFound();
-
-        _repository.Delete(allocation);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        var success = await _allocationService.DeleteAllocationAsync(id, orgId.Value, cancellationToken);
+        if (!success) return NotFound();
 
         return NoContent();
     }

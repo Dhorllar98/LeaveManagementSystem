@@ -1,5 +1,5 @@
 ﻿using LeaveManagement.Application.DTOs.LeaveType;
-using LeaveManagement.Domain.Entities;
+using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,15 +11,13 @@ namespace LeaveManagement.Api.Controllers;
 [Authorize]
 public class LeaveTypesController : BaseController
 {
-    private readonly ILeaveTypeRepository _repository;
+    private readonly ILeaveTypeService _leaveTypeService;
     private readonly IUserRepository _userRepository;
-    private readonly IUnitOfWork _unitOfWork;
 
-    public LeaveTypesController(ILeaveTypeRepository repository, IUserRepository userRepository, IUnitOfWork unitOfWork)
+    public LeaveTypesController(ILeaveTypeService leaveTypeService, IUserRepository userRepository)
     {
-        _repository = repository;
+        _leaveTypeService = leaveTypeService;
         _userRepository = userRepository;
-        _unitOfWork = unitOfWork;
     }
 
     private async Task<Guid?> GetUserOrganizationIdAsync(CancellationToken cancellationToken)
@@ -37,14 +35,7 @@ public class LeaveTypesController : BaseController
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var leaveTypes = await _repository.GetAllByOrganizationAsync(orgId.Value, cancellationToken);
-        var result = leaveTypes.Select(lt => new LeaveTypeDto
-        {
-            Id = lt.Id,
-            Name = lt.Name,
-            DefaultDays = lt.DefaultDays
-        });
-
+        var result = await _leaveTypeService.GetLeaveTypesAsync(orgId.Value, cancellationToken);
         return Ok(result);
     }
 
@@ -52,16 +43,12 @@ public class LeaveTypesController : BaseController
     public async Task<ActionResult<LeaveTypeDto>> GetLeaveType(Guid id, CancellationToken cancellationToken)
     {
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var leaveType = await _repository.GetByIdAsync(id, cancellationToken);
-        if (leaveType == null || leaveType.OrganizationId != orgId) return NotFound();
+        var leaveType = await _leaveTypeService.GetLeaveTypeByIdAsync(id, orgId.Value, cancellationToken);
+        if (leaveType == null) return NotFound();
 
-        return Ok(new LeaveTypeDto
-        {
-            Id = leaveType.Id,
-            Name = leaveType.Name,
-            DefaultDays = leaveType.DefaultDays
-        });
+        return Ok(leaveType);
     }
 
     [HttpPost]
@@ -71,24 +58,8 @@ public class LeaveTypesController : BaseController
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
         if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var leaveType = new LeaveType
-        {
-            OrganizationId = orgId.Value,
-            Name = dto.Name,
-            DefaultDays = dto.DefaultDays
-        };
-
-        await _repository.AddAsync(leaveType, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        var result = new LeaveTypeDto
-        {
-            Id = leaveType.Id,
-            Name = leaveType.Name,
-            DefaultDays = leaveType.DefaultDays
-        };
-
-        return CreatedAtAction(nameof(GetLeaveType), new { id = leaveType.Id }, result);
+        var result = await _leaveTypeService.CreateLeaveTypeAsync(dto, orgId.Value, cancellationToken);
+        return CreatedAtAction(nameof(GetLeaveType), new { id = result.Id }, result);
     }
 
     [HttpPut("{id:guid}")]
@@ -96,16 +67,10 @@ public class LeaveTypesController : BaseController
     public async Task<IActionResult> UpdateLeaveType(Guid id, UpdateLeaveTypeDto dto, CancellationToken cancellationToken)
     {
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var leaveType = await _repository.GetByIdAsync(id, cancellationToken);
-        if (leaveType == null || leaveType.OrganizationId != orgId) return NotFound();
-
-        leaveType.Name = dto.Name;
-        leaveType.DefaultDays = dto.DefaultDays;
-        leaveType.UpdatedAt = DateTime.UtcNow;
-
-        _repository.Update(leaveType);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        var success = await _leaveTypeService.UpdateLeaveTypeAsync(id, dto, orgId.Value, cancellationToken);
+        if (!success) return NotFound();
 
         return NoContent();
     }
@@ -115,12 +80,10 @@ public class LeaveTypesController : BaseController
     public async Task<IActionResult> DeleteLeaveType(Guid id, CancellationToken cancellationToken)
     {
         var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
 
-        var leaveType = await _repository.GetByIdAsync(id, cancellationToken);
-        if (leaveType == null || leaveType.OrganizationId != orgId) return NotFound();
-
-        _repository.Delete(leaveType);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        var success = await _leaveTypeService.DeleteLeaveTypeAsync(id, orgId.Value, cancellationToken);
+        if (!success) return NotFound();
 
         return NoContent();
     }
