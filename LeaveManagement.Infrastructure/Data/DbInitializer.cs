@@ -35,8 +35,9 @@ public static class DbInitializer
             UPDATE ""LeaveTypes"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
         ", defaultOrg.Id);
 
-        // Leave Types (Assigned to Default Organization)
-        if (!await context.LeaveTypes.AnyAsync())
+        // Leave Types (Assigned specifically to Default Organization)
+        var defaultOrgHasLeaveTypes = await context.LeaveTypes.AnyAsync(l => l.OrganizationId == defaultOrg.Id);
+        if (!defaultOrgHasLeaveTypes)
         {
             var leaveTypes = new List<LeaveType>
             {
