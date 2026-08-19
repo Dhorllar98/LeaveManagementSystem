@@ -1,9 +1,7 @@
 ﻿using LeaveManagement.Application.DTOs.Profile;
-using LeaveManagement.Domain.Enums;
-using LeaveManagement.Infrastructure.Data;
+using LeaveManagement.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace LeaveManagement.Api.Controllers;
 
@@ -12,11 +10,11 @@ namespace LeaveManagement.Api.Controllers;
 [Authorize]
 public class ProfileController : BaseController
 {
-    private readonly AppDbContext _context;
+    private readonly IProfileService _profileService;
 
-    public ProfileController(AppDbContext context)
+    public ProfileController(IProfileService profileService)
     {
-        _context = context;
+        _profileService = profileService;
     }
 
     [HttpGet]
@@ -25,31 +23,8 @@ public class ProfileController : BaseController
         var currentUserId = GetCurrentUserId();
         if (currentUserId == Guid.Empty) return Unauthorized();
 
-        var user = await _context.Users
-            .Include(u => u.Department)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
-
-        if (user == null) return NotFound(new { message = "Profile not found." });
-
-        var formattedCode = !string.IsNullOrWhiteSpace(user.EmployeeCode) ? user.EmployeeCode : user.Id.ToString();
-        var department = user.Department?.Name ?? "Human Resources";
-
-        var profile = new ProfileResponseDto
-        {
-            Id = user.Id,
-            FullName = user.FullName,
-            Email = user.Email,
-            Role = user.Role.ToString(),
-            Department = department,
-            DepartmentName = department,
-            Designation = !string.IsNullOrWhiteSpace(user.Designation) ? user.Designation : user.Role.ToString(),
-            EmployeeCode = formattedCode,
-            EmployeeId = formattedCode,
-            LeaveBalance = user.LeaveBalance,
-            CreatedAt = user.CreatedAt,
-            OrganizationId = user.OrganizationId
-        };
+        var profile = await _profileService.GetProfileAsync(currentUserId, cancellationToken);
+        if (profile == null) return NotFound(new { message = "Profile not found." });
 
         return Ok(profile);
     }
@@ -60,44 +35,23 @@ public class ProfileController : BaseController
         var currentUserId = GetCurrentUserId();
         if (currentUserId == Guid.Empty) return Unauthorized();
 
-        var currentUser = await _context.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+        var (success, message, statusCode) = await _profileService.UpdateProfileAsync(currentUserId, dto, cancellationToken);
 
-        if (currentUser == null) return Unauthorized();
-
-        var targetUserId = dto.UserId.HasValue && dto.UserId.Value != Guid.Empty
-            ? dto.UserId.Value
-            : currentUserId;
-
-        if (targetUserId != currentUserId && currentUser.Role != UserRole.HR)
+        if (!success)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "You do not have permission to update other users' profiles." });
+            return statusCode switch
+            {
+                401 => Unauthorized(new { message }),
+                403 => StatusCode(StatusCodes.Status403Forbidden, new { message }),
+                404 => NotFound(new { message }),
+                _ => BadRequest(new { message })
+            };
         }
-
-        var targetUser = await _context.Users
-            .FirstOrDefaultAsync(u => u.Id == targetUserId && u.OrganizationId == currentUser.OrganizationId, cancellationToken);
-
-        if (targetUser == null)
-        {
-            return NotFound(new { message = "Target user not found or does not belong to your organization." });
-        }
-
-        if (!string.IsNullOrWhiteSpace(dto.FullName))
-            targetUser.FullName = dto.FullName;
-
-        if (dto.DepartmentId.HasValue)
-            targetUser.DepartmentId = dto.DepartmentId.Value;
-
-        if (!string.IsNullOrWhiteSpace(dto.Designation))
-            targetUser.Designation = dto.Designation;
-
-        await _context.SaveChangesAsync(cancellationToken);
 
         return Ok(new
         {
             success = true,
-            message = targetUserId == currentUserId ? "Your profile was updated successfully." : "Employee profile updated successfully."
+            message
         });
     }
 }

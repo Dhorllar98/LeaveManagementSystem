@@ -1,4 +1,4 @@
-﻿namespace LeaveManagement.Application.DTOs.Auth;
+﻿namespace LeaveManagement.Application.DTOs.User;
 
 public class UpdateUserDto
 {

@@ -25,6 +25,13 @@ namespace LeaveManagement.Infrastructure.Migrations
                 nullable: false,
                 defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
 
+            // Insert default organization satisfying all NOT NULL constraints (CodePrefix, LastEmployeeNumber)
+            migrationBuilder.Sql(@"
+                INSERT INTO ""Organizations"" (""Id"", ""Name"", ""CodePrefix"", ""LastEmployeeNumber"", ""CreatedAt"")
+                VALUES ('00000000-0000-0000-0000-000000000000', 'Default Organization', 'DEF', 0, NOW())
+                ON CONFLICT (""Id"") DO NOTHING;
+            ");
+
             migrationBuilder.CreateIndex(
                 name: "IX_Departments_OrganizationId",
                 table: "Departments",

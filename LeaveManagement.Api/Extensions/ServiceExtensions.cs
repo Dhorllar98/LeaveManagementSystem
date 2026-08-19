@@ -3,6 +3,7 @@ using LeaveManagement.Application.DTOs.Auth;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Application.Services;
 using LeaveManagement.Application.Validators;
+using LeaveManagement.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -53,10 +54,23 @@ public static class ServiceExtensions
 
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
+        // Authentication & Tokens
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+
+        // Domain Services
+        services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IDepartmentService, DepartmentService>();
+        services.AddScoped<ILeaveAllocationService, LeaveAllocationService>();
+        services.AddScoped<ILeaveRequestService, LeaveRequestService>();
+        services.AddScoped<ILeaveTypeService, LeaveTypeService>();
+        services.AddScoped<IProfileService, ProfileService>();
+        services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<IUserService, UserService>();
+
+        // Fluent Validators
         services.AddScoped<IValidator<RegisterRequestDto>, RegisterRequestValidator>();
         services.AddScoped<IValidator<LoginRequestDto>, LoginRequestValidator>();
-        services.AddScoped<IDepartmentService, DepartmentService>();
 
         return services;
     }

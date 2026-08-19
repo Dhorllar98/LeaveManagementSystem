@@ -47,14 +47,11 @@ public class DepartmentsController : BaseController
 
         var department = await _departmentService.GetDepartmentByIdAsync(id, orgId.Value);
         if (department == null)
-        {
             return NotFound(new { message = $"Department with ID '{id}' not found." });
-        }
 
         return Ok(department);
     }
 
-    // (HR Only)
     [HttpPost]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> Create([FromBody] CreateDepartmentDto dto)
@@ -66,7 +63,6 @@ public class DepartmentsController : BaseController
         return CreatedAtAction(nameof(GetById), new { id = department.Id }, department);
     }
 
-    // (HR Only)
     [HttpPost("assign-team-lead")]
     [Authorize(Roles = "HR")]
     public async Task<IActionResult> AssignTeamLead([FromBody] AssignTeamLeadDto dto)
