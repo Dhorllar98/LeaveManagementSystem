@@ -12,4 +12,13 @@ public interface ISettingsService
         Guid userId,
         NotificationSettingsDto dto,
         CancellationToken cancellationToken = default);
+
+    Task<OrganizationSettingsDto?> GetOrganizationSettingsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool Success, string Message, OrganizationSettingsDto? Data)> UpdateOrganizationSettingsAsync(
+        Guid userId,
+        UpdateOrganizationSettingsDto dto,
+        CancellationToken cancellationToken = default);
 }

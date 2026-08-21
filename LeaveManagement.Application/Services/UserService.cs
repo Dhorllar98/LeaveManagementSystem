@@ -1,4 +1,6 @@
-﻿using LeaveManagement.Application.DTOs.User;
+﻿using LeaveManagement.Application.Common.Models;
+using LeaveManagement.Application.DTOs.User;
+using LeaveManagement.Application.DTOs.Users;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
@@ -30,14 +32,47 @@ public class UserService : IUserService
         return user?.OrganizationId;
     }
 
-    public async Task<IEnumerable<UserResponseDto>?> GetUsersAsync(Guid currentUserId, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<UserResponseDto>?> GetUsersAsync(
+        Guid currentUserId,
+        UserFilterDto filter,
+        CancellationToken cancellationToken = default)
     {
         var orgId = await GetOrganizationIdAsync(currentUserId, cancellationToken);
         if (orgId == null) return null;
 
-        return await _context.Users
+        var query = _context.Users
             .AsNoTracking()
-            .Where(u => u.OrganizationId == orgId)
+            .Where(u => u.OrganizationId == orgId);
+
+        if (!string.IsNullOrWhiteSpace(filter.SearchTerm))
+        {
+            var term = filter.SearchTerm.Trim().ToLower();
+
+            query = query.Where(u =>
+                u.FullName.ToLower().Contains(term) ||
+                u.Email.ToLower().Contains(term) ||
+                (u.EmployeeCode != null && u.EmployeeCode.ToLower().Contains(term)));
+        }
+
+        if (filter.DepartmentId.HasValue)
+        {
+            query = query.Where(u => u.DepartmentId == filter.DepartmentId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Role) && Enum.TryParse<UserRole>(filter.Role, true, out var parsedRole))
+        {
+            query = query.Where(u => u.Role == parsedRole);
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var pageNumber = filter.PageNumber < 1 ? 1 : filter.PageNumber;
+        var pageSize = filter.PageSize < 1 ? 10 : (filter.PageSize > 100 ? 100 : filter.PageSize);
+
+        var users = await query
+            .OrderByDescending(u => u.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(u => new UserResponseDto
             {
                 Id = u.Id,
@@ -55,6 +90,14 @@ public class UserService : IUserService
                 CreatedAt = u.CreatedAt
             })
             .ToListAsync(cancellationToken);
+
+        return new PagedResult<UserResponseDto>
+        {
+            Items = users,
+            TotalCount = totalCount,
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
     }
 
     public async Task<UserResponseDto?> GetUserByIdAsync(Guid id, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -135,7 +178,7 @@ public class UserService : IUserService
             OrganizationId = org.Id,
             EmployeeCode = formattedCode,
             LeaveBalance = 20,
-            PasswordResetToken = resetToken, 
+            PasswordResetToken = resetToken,
             ResetTokenExpiresAt = DateTime.UtcNow.AddHours(24),
             CreatedAt = DateTime.UtcNow
         };
@@ -143,14 +186,12 @@ public class UserService : IUserService
         await _context.Users.AddAsync(newUser, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        // Build reset link
         string baseUrl = string.IsNullOrWhiteSpace(dto.ResetPasswordUrl)
             ? "https://new-leave-management-system-qszg.vercel.app/reset-password"
             : dto.ResetPasswordUrl.TrimEnd('/');
 
         string resetLink = $"{baseUrl}?token={resetToken}&email={Uri.EscapeDataString(newUser.Email)}";
 
-        // Clickable HTML Email Body
         string emailBody = $@"
             <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;'>
                 <h3>Welcome to LeaveFlow, {dto.FullName}!</h3>

@@ -1,13 +1,21 @@
-﻿using LeaveManagement.Application.DTOs.User;
+﻿using LeaveManagement.Application.Common.Models;
+using LeaveManagement.Application.DTOs.User;
+using LeaveManagement.Application.DTOs.Users;
 using Microsoft.AspNetCore.Http;
 
 namespace LeaveManagement.Application.Interfaces;
 
 public interface IUserService
 {
-    Task<IEnumerable<UserResponseDto>?> GetUsersAsync(Guid currentUserId, CancellationToken cancellationToken = default);
+    Task<PagedResult<UserResponseDto>?> GetUsersAsync(
+        Guid currentUserId,
+        UserFilterDto filter,
+        CancellationToken cancellationToken = default);
 
-    Task<UserResponseDto?> GetUserByIdAsync(Guid id, Guid currentUserId, CancellationToken cancellationToken = default);
+    Task<UserResponseDto?> GetUserByIdAsync(
+        Guid id,
+        Guid currentUserId,
+        CancellationToken cancellationToken = default);
 
     Task<(bool Success, string Message, int StatusCode, object? Data)> ProvisionUserAsync(
         Guid hrUserId,

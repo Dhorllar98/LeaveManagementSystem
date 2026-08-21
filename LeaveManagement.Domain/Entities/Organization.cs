@@ -14,6 +14,7 @@ public class Organization
     public int LastEmployeeNumber { get; set; } = 0;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
 
     public ICollection<User> Users { get; set; } = new List<User>();
     public ICollection<LeaveType> LeaveTypes { get; set; } = new List<LeaveType>();

@@ -59,4 +59,48 @@ public class SettingsController : BaseController
             data
         });
     }
+
+    /// <summary>
+    /// Fetch current organization settings.
+    /// </summary>
+    [HttpGet("organization")]
+    [Authorize(Roles = "HR")]
+    public async Task<IActionResult> GetOrganizationSettings(CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        var settings = await _settingsService.GetOrganizationSettingsAsync(currentUserId, cancellationToken);
+
+        if (settings == null)
+        {
+            return BadRequest(new { success = false, message = "User organization not found." });
+        }
+
+        return Ok(new { success = true, data = settings });
+    }
+
+    /// <summary>
+    /// Update organization settings (including optional company logo upload).
+    /// </summary>
+    [HttpPut("organization")]
+    [Consumes("multipart/form-data")]
+    [Authorize(Roles = "HR")]
+    public async Task<IActionResult> UpdateOrganizationSettings(
+        [FromForm] UpdateOrganizationSettingsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        var (success, message, data) = await _settingsService.UpdateOrganizationSettingsAsync(currentUserId, dto, cancellationToken);
+
+        if (!success)
+        {
+            return BadRequest(new { success = false, message });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            message,
+            data
+        });
+    }
 }

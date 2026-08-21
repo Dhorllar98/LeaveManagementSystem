@@ -1,4 +1,5 @@
 ﻿using LeaveManagement.Application.DTOs.User;
+using LeaveManagement.Application.DTOs.Users;
 using LeaveManagement.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -20,17 +21,17 @@ public class UsersController : BaseController
 
     [HttpGet]
     [Authorize(Roles = "HR,TeamLead")]
-    public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetUsers([FromQuery] UserFilterDto filter, CancellationToken cancellationToken)
     {
         var currentUserId = GetCurrentUserId();
-        var users = await _userService.GetUsersAsync(currentUserId, cancellationToken);
+        var result = await _userService.GetUsersAsync(currentUserId, filter, cancellationToken);
 
-        if (users == null)
+        if (result == null)
         {
             return BadRequest(new { message = "User organization not found." });
         }
 
-        return Ok(users);
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
