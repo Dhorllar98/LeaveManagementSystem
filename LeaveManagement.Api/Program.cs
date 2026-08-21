@@ -8,6 +8,7 @@ using LeaveManagement.Infrastructure.Data;
 using LeaveManagement.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
+using CloudinaryDotNet;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +18,6 @@ if (!string.IsNullOrEmpty(portEnv) && int.TryParse(portEnv, out var cloudPort))
 {
     builder.WebHost.ConfigureKestrel(options =>
     {
-        // Closes all other default internal ports and binds exclusively to the cloud port
         options.ListenAnyIP(cloudPort);
     });
 }
@@ -28,19 +28,34 @@ builder.Configuration
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false)
     .AddEnvironmentVariables();
 
-// 1. Presentation & API Services (Controllers, JSON options, Swagger)
+// 1. Presentation & API Services
 builder.Services.AddPresentationServices(builder.Configuration);
 
-// 2. Application Layer Services, Validators & Department logic
+// 2. Application Layer Services
 builder.Services.AddApplicationServices();
 
-// 3. Infrastructure Layer (Data, Repositories, DbContext)
+// 3. Infrastructure Layer
 builder.Services.AddInfrastructureServices(builder.Configuration);
+
+// --- Cloudinary Registration & Validation ---
+var cloudName = builder.Configuration["CloudinarySettings:CloudName"] ?? builder.Configuration["Cloudinary:CloudName"];
+var apiKey = builder.Configuration["CloudinarySettings:ApiKey"] ?? builder.Configuration["Cloudinary:ApiKey"];
+var apiSecret = builder.Configuration["CloudinarySettings:ApiSecret"] ?? builder.Configuration["Cloudinary:ApiSecret"];
+
+if (string.IsNullOrWhiteSpace(cloudName) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(apiSecret))
+{
+    throw new InvalidOperationException("CRITICAL: Cloudinary settings (CloudName, ApiKey, ApiSecret) are missing from configuration.");
+}
+
+var cloudinaryAccount = new Account(cloudName, apiKey, apiSecret);
+var cloudinary = new Cloudinary(cloudinaryAccount) { Api = { Secure = true } };
+
+builder.Services.AddSingleton(cloudinary);
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<IPhotoService, CloudinaryService>(); 
+builder.Services.AddScoped<IPhotoService, CloudinaryService>();
 
-// 4. JWT Authentication & Options Binding
+// 4. JWT Authentication
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
@@ -74,7 +89,6 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors("AllowAll");
-
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseSwagger();
@@ -84,20 +98,17 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = "swagger";
 });
 
-// Avoid HTTPS redirection warnings on reverse proxies like Render
 if (!app.Environment.IsProduction())
 {
     app.UseHttpsRedirection();
 }
 
 app.UseRateLimiter();
-
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// Run database migration and seeding synchronously BEFORE the app starts listening
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -106,7 +117,6 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<AppDbContext>();
-
         logger.LogInformation("Applying pending database migrations...");
         await context.Database.MigrateAsync();
 

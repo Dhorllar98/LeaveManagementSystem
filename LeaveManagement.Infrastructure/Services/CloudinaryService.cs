@@ -2,7 +2,6 @@
 using CloudinaryDotNet.Actions;
 using LeaveManagement.Application.Interfaces;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 
 namespace LeaveManagement.Infrastructure.Services;
 
@@ -10,24 +9,19 @@ public class CloudinaryService : IPhotoService
 {
     private readonly Cloudinary _cloudinary;
 
-    public CloudinaryService(IConfiguration config)
+    public CloudinaryService(Cloudinary cloudinary)
     {
-        var account = new Account(
-            config["CloudinarySettings:CloudName"],
-            config["CloudinarySettings:ApiKey"],
-            config["CloudinarySettings:ApiSecret"]
-        );
-        _cloudinary = new Cloudinary(account);
+        _cloudinary = cloudinary ?? throw new ArgumentNullException(nameof(cloudinary));
     }
 
     public async Task<string> UploadImageAsync(IFormFile file, CancellationToken cancellationToken = default)
     {
         if (file == null || file.Length == 0)
         {
-            throw new ArgumentException("Invalid file provided.");
+            throw new Domain.Exceptions.ValidationException("Invalid file provided.");
         }
 
-        using var stream = file.OpenReadStream();
+        await using var stream = file.OpenReadStream();
 
         var uploadParams = new ImageUploadParams
         {
