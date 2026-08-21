@@ -38,6 +38,7 @@ builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IPhotoService, CloudinaryService>(); 
 
 // 4. JWT Authentication & Options Binding
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));

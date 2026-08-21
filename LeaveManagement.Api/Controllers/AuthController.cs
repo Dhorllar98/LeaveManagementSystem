@@ -1,7 +1,6 @@
 ﻿using LeaveManagement.Application.DTOs.Auth;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Infrastructure.Data;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,7 +18,8 @@ public class AuthController : BaseController
     }
 
     [HttpPost("register-organization")]
-    public async Task<IActionResult> RegisterOrganization([FromBody] RegisterOrganizationDto request, CancellationToken cancellationToken)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> RegisterOrganization([FromForm] RegisterOrganizationDto request, CancellationToken cancellationToken)
     {
         var response = await _authService.RegisterOrganizationAsync(request, cancellationToken);
         return Ok(response);
