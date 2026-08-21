@@ -1,6 +1,6 @@
 # 🏢 Leave Management System API
 
-A production-grade RESTful API built with **.NET 9** and **Clean Architecture** to streamline corporate employee leave requests, role-based workflow approvals, and HR provisioning.
+A production-grade RESTful API built with **.NET 9** and **Clean Architecture** to streamline corporate employee leave requests, role-based workflow approvals, organization onboarding, and HR provisioning.
 
 ---
 
@@ -21,7 +21,7 @@ A production-grade RESTful API built with **.NET 9** and **Clean Architecture** 
    * Review, approve, or reject pending leave requests for team members.
 3. **HR (`3`)**
    * All Team Lead permissions.
-   * Provision new employee accounts and dispatch automated setup emails.
+   * Onboard organizations, upload company logos, provision employee accounts, and dispatch automated setup emails.
    * Access company-wide total leave request overviews (`/api/LeaveRequests/all`).
 
 ---
@@ -32,6 +32,7 @@ A production-grade RESTful API built with **.NET 9** and **Clean Architecture** 
 * **Architecture:** Clean Architecture (Domain, Application, Infrastructure, Api)
 * **Database:** PostgreSQL (with Entity Framework Core)
 * **Authentication:** JWT (JSON Web Tokens) & BCrypt Password Hashing
+* **Media Storage:** Cloudinary SDK (Organization logos)
 * **Email Service:** Brevo HTTP API Integration
 * **Deployment:** Render (Backend) & Vercel (Frontend)
 
