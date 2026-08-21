@@ -19,6 +19,7 @@ public class AuthService : IAuthService
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly IValidator<RegisterRequestDto> _registerValidator;
     private readonly IValidator<LoginRequestDto> _loginValidator;
+    private readonly IPhotoService _photoService;
 
     public AuthService(
         IUserRepository userRepository,
@@ -28,7 +29,8 @@ public class AuthService : IAuthService
         IUnitOfWork unitOfWork,
         IJwtTokenGenerator jwtTokenGenerator,
         IValidator<RegisterRequestDto> registerValidator,
-        IValidator<LoginRequestDto> loginValidator)
+        IValidator<LoginRequestDto> loginValidator,
+        IPhotoService photoService)
     {
         _userRepository = userRepository;
         _organizationRepository = organizationRepository;
@@ -38,11 +40,32 @@ public class AuthService : IAuthService
         _jwtTokenGenerator = jwtTokenGenerator;
         _registerValidator = registerValidator;
         _loginValidator = loginValidator;
+        _photoService = photoService;
     }
 
     public async Task<ApiResponse<AuthResponseDto>> RegisterOrganizationAsync(RegisterOrganizationDto request, CancellationToken cancellationToken = default)
     {
         var normalizedPrefix = request.CodePrefix.Trim().ToUpper();
+
+        // Mandatory File Validation
+        if (request.CompanyLogo == null || request.CompanyLogo.Length == 0)
+        {
+            throw new Domain.Exceptions.ValidationException("A company logo is required.");
+        }
+
+        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".svg", ".webp" };
+        var extension = Path.GetExtension(request.CompanyLogo.FileName).ToLowerInvariant();
+
+        if (!allowedExtensions.Contains(extension))
+        {
+            throw new Domain.Exceptions.ValidationException("Invalid file format. Logo must be a JPG, PNG, WEBP, or SVG.");
+        }
+
+        // 2 MB Size Limit (2 * 1024 * 1024 bytes)
+        if (request.CompanyLogo.Length > 2 * 1024 * 1024)
+        {
+            throw new Domain.Exceptions.ValidationException("Logo file size cannot exceed 2 MB.");
+        }
 
         if (await _organizationRepository.ExistsByPrefixAsync(normalizedPrefix, cancellationToken))
         {
@@ -54,11 +77,18 @@ public class AuthService : IAuthService
             throw new ConflictException($"User with email '{request.AdminEmail}' already exists.");
         }
 
-        // Create Organization
+        // Upload Logo directly to Cloudinary
+        string logoUrl = await _photoService.UploadImageAsync(request.CompanyLogo, cancellationToken);
+
+        // Create Organization with stored Cloudinary Logo CDN URL
         var organization = new Organization
         {
             Id = Guid.NewGuid(),
             Name = request.CompanyName,
+            Industry = request.Industry,
+            CompanySize = request.CompanySize,
+            Website = request.Website,
+            LogoUrl = logoUrl,
             CodePrefix = normalizedPrefix,
             LastEmployeeNumber = 1,
             CreatedAt = DateTime.UtcNow
@@ -73,14 +103,6 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow
         };
 
-        // Create Default Leave Types with OrganizationId bound
-        var defaultLeaveTypes = new List<LeaveType>
-        {
-            new() { Id = Guid.NewGuid(), Name = "Annual Leave", DefaultDays = 20, OrganizationId = organization.Id, CreatedAt = DateTime.UtcNow },
-            new() { Id = Guid.NewGuid(), Name = "Sick Leave", DefaultDays = 10, OrganizationId = organization.Id, CreatedAt = DateTime.UtcNow },
-            new() { Id = Guid.NewGuid(), Name = "Maternity/Paternity Leave", DefaultDays = 30, OrganizationId = organization.Id, CreatedAt = DateTime.UtcNow }
-        };
-
         // Create Initial HR Admin Account
         var hrAdmin = new User
         {
@@ -89,7 +111,7 @@ public class AuthService : IAuthService
             Email = request.AdminEmail,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Role = UserRole.HR,
-            Designation = "HR Manager",
+            Designation = string.IsNullOrWhiteSpace(request.JobTitle) ? "HR Manager" : request.JobTitle,
             OrganizationId = organization.Id,
             DepartmentId = hrDepartment.Id,
             EmployeeCode = $"{normalizedPrefix}-01",
@@ -104,13 +126,9 @@ public class AuthService : IAuthService
         hrAdmin.RefreshToken = refreshToken;
         hrAdmin.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
 
-        // Save via Repositories & UnitOfWork
+        // Persistence
         await _organizationRepository.AddAsync(organization, cancellationToken);
         await _departmentRepository.AddAsync(hrDepartment);
-        foreach (var leaveType in defaultLeaveTypes)
-        {
-            await _leaveTypeRepository.AddAsync(leaveType);
-        }
         await _userRepository.AddAsync(hrAdmin, cancellationToken);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -145,7 +163,6 @@ public class AuthService : IAuthService
             throw new ConflictException($"User with email {request.Email} already exists.");
         }
 
-        // Fetch department to inherit tenant OrganizationId
         var department = request.DepartmentId.HasValue
             ? await _departmentRepository.GetByIdAsync(request.DepartmentId.Value)
             : null;
@@ -157,7 +174,7 @@ public class AuthService : IAuthService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Role = request.Role,
             DepartmentId = request.DepartmentId,
-            OrganizationId = department?.OrganizationId, // Automatically binds employee to organization
+            OrganizationId = department?.OrganizationId,
             Designation = request.Designation,
             LeaveBalance = 20,
             CreatedAt = DateTime.UtcNow

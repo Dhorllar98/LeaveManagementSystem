@@ -2,6 +2,7 @@
 using LeaveManagement.Domain.Interfaces;
 using LeaveManagement.Infrastructure.Data;
 using LeaveManagement.Infrastructure.Repositories;
+using LeaveManagement.Infrastructure.Services; 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,7 @@ public static class DependencyInjection
 
         services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
 
+        // Repositories
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ILeaveRepository, LeaveRepository>();
         services.AddScoped<ILeaveTypeRepository, LeaveTypeRepository>();
@@ -27,6 +29,9 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentRepository, DepartmentRepository>();
         services.AddScoped<IOrganizationRepository, OrganizationRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+        // Infrastructure Services
+        services.AddScoped<IPhotoService, CloudinaryService>(); 
 
         return services;
     }
