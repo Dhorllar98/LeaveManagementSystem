@@ -1,5 +1,5 @@
 ﻿using FluentValidation;
-using LeaveManagement.Application.DTOs.Auth;
+using FluentValidation.AspNetCore;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Application.Services;
 using LeaveManagement.Application.Validators;
@@ -22,6 +22,8 @@ public static class ServiceExtensions
                 options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
                 options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
             });
+
+        services.AddFluentValidationAutoValidation();
 
         services.AddEndpointsApiExplorer();
 
@@ -68,7 +70,7 @@ public static class ServiceExtensions
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IUserService, UserService>();
 
-        // Fluent Validators (Auto-scans and registers all validators in the Application assembly)
+        // Fluent Validators
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
 
         return services;
@@ -108,7 +110,6 @@ public static class ServiceExtensions
                     ClockSkew = TimeSpan.Zero
                 };
 
-                // DIAGNOSTIC EVENTS: Catches and prints authentication failures to the Output window
                 options.Events = new JwtBearerEvents
                 {
                     OnAuthenticationFailed = context =>
