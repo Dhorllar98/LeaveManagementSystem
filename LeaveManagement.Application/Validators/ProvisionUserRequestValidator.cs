@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
 using LeaveManagement.Application.DTOs.User;
+using LeaveManagement.Domain.Enums;
 
 namespace LeaveManagement.Application.Validators;
 
