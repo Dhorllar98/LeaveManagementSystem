@@ -158,6 +158,28 @@ public class UserService : IUserService
             return (false, $"Email '{dto.Email}' already exists in your organization.", 400, null);
         }
 
+        if (dto.DepartmentId.HasValue)
+        {
+            var deptExists = await _context.Departments
+                .AnyAsync(d => d.Id == dto.DepartmentId.Value && d.OrganizationId == org.Id, cancellationToken);
+
+            if (!deptExists)
+            {
+                return (false, "Selected department does not exist in your organization.", 400, null);
+            }
+        }
+
+        if (dto.TeamLeadId.HasValue)
+        {
+            var leadExists = await _context.Users
+                .AnyAsync(u => u.Id == dto.TeamLeadId.Value && u.OrganizationId == org.Id, cancellationToken);
+
+            if (!leadExists)
+            {
+                return (false, "Selected team lead does not exist in your organization.", 400, null);
+            }
+        }
+
         org.LastEmployeeNumber++;
         string formattedCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
         string tempPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
@@ -165,6 +187,7 @@ public class UserService : IUserService
 
         Enum.TryParse<UserRole>(dto.Role, true, out var userRole);
 
+        // Creating user assigns them to a department as an employee, NOT as Department.TeamLeadId.
         var newUser = new User
         {
             Id = Guid.NewGuid(),
@@ -245,11 +268,33 @@ public class UserService : IUserService
             return (false, $"User with ID '{id}' not found or does not belong to your organization.", 404, null);
         }
 
+        if (dto.DepartmentId.HasValue)
+        {
+            var deptExists = await _context.Departments
+                .AnyAsync(d => d.Id == dto.DepartmentId.Value && d.OrganizationId == orgId, cancellationToken);
+
+            if (!deptExists)
+            {
+                return (false, "Selected department does not exist in your organization.", 400, null);
+            }
+            user.DepartmentId = dto.DepartmentId;
+        }
+
+        if (dto.TeamLeadId.HasValue)
+        {
+            var leadExists = await _context.Users
+                .AnyAsync(u => u.Id == dto.TeamLeadId.Value && u.OrganizationId == orgId, cancellationToken);
+
+            if (!leadExists)
+            {
+                return (false, "Selected team lead does not exist in your organization.", 400, null);
+            }
+            user.TeamLeadId = dto.TeamLeadId;
+        }
+
         if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName;
         if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email;
         if (!string.IsNullOrWhiteSpace(dto.Designation)) user.Designation = dto.Designation;
-        if (dto.DepartmentId.HasValue) user.DepartmentId = dto.DepartmentId;
-        if (dto.TeamLeadId.HasValue) user.TeamLeadId = dto.TeamLeadId;
         if (dto.LeaveBalance.HasValue) user.LeaveBalance = dto.LeaveBalance.Value;
 
         if (!string.IsNullOrWhiteSpace(dto.Role) && Enum.TryParse<UserRole>(dto.Role, true, out var parsedRole))
@@ -298,8 +343,10 @@ public class UserService : IUserService
             return (false, "Organization not found.", 400, null);
         }
 
+        // Scope department lookup strictly to HR's organization
         var departments = await _context.Departments
             .AsNoTracking()
+            .Where(d => d.OrganizationId == org.Id)
             .ToListAsync(cancellationToken);
 
         var existingEmails = await _context.Users

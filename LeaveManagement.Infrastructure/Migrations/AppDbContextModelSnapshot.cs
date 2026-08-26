@@ -169,7 +169,7 @@ namespace LeaveManagement.Infrastructure.Migrations
 
                     b.HasIndex("OrganizationId");
 
-                    b.ToTable("LeaveTypes");
+                    b.ToTable("LeaveTypes", (string)null);
                 });
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.NotificationSetting", b =>
@@ -197,7 +197,7 @@ namespace LeaveManagement.Infrastructure.Migrations
 
                     b.HasIndex("OrganizationId");
 
-                    b.ToTable("NotificationSettings");
+                    b.ToTable("NotificationSettings", (string)null);
                 });
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.Organization", b =>
@@ -238,7 +238,7 @@ namespace LeaveManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Organizations");
+                    b.ToTable("Organizations", (string)null);
                 });
 
             modelBuilder.Entity("LeaveManagement.Domain.Entities.User", b =>
