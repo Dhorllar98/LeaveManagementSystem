@@ -16,9 +16,14 @@ public class DepartmentConfiguration : IEntityTypeConfiguration<Department>
             .IsRequired()
             .HasMaxLength(100);
 
+        builder.Property(d => d.OrganizationId)
+            .IsRequired();
+
+        // Nullable foreign key: Departments start unassigned until HR explicitly assigns a team lead
         builder.HasOne(d => d.TeamLead)
             .WithMany()
             .HasForeignKey(d => d.TeamLeadId)
+            .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
