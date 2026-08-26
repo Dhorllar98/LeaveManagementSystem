@@ -21,7 +21,9 @@ public class ProvisionUserRequestValidator : AbstractValidator<ProvisionUserDto>
             .WithMessage("Email address is invalid.");
 
         RuleFor(x => x.Role)
-            .IsInEnum().WithMessage("Invalid user role.");
+            .NotEmpty().WithMessage("Role is required.")
+            .IsEnumName(typeof(UserRole), caseSensitive: false)
+            .WithMessage("Invalid user role. Allowed values: Employee, TeamLead, HR.");
 
         RuleFor(x => x.Designation)
             .NotEmpty().WithMessage("Designation is required.")
