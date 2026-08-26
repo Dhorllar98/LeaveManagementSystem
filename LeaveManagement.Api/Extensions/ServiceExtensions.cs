@@ -68,9 +68,8 @@ public static class ServiceExtensions
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IUserService, UserService>();
 
-        // Fluent Validators
-        services.AddScoped<IValidator<RegisterRequestDto>, RegisterRequestValidator>();
-        services.AddScoped<IValidator<LoginRequestDto>, LoginRequestValidator>();
+        // Fluent Validators (Auto-scans and registers all validators in the Application assembly)
+        services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
 
         return services;
     }
