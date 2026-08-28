@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using sib_api_v3_sdk.Api;
 using sib_api_v3_sdk.Client;
 using sib_api_v3_sdk.Model;
+using Task = System.Threading.Tasks.Task;
 
 namespace LeaveManagement.Infrastructure.Services;
 
@@ -18,7 +19,7 @@ public class EmailService : IEmailService
         _logger = logger;
     }
 
-    public async System.Threading.Tasks.Task SendEmailAsync(string to, string subject, string body)
+    public async Task SendEmailAsync(string to, string subject, string body)
     {
         var apiKey = _config["EmailSettings:BrevoApiKey"];
         var senderEmail = _config["EmailSettings:SenderEmail"] ?? "noreply@leavemanagementsystem.com";
@@ -32,9 +33,10 @@ public class EmailService : IEmailService
 
         try
         {
-            Configuration.Default.ApiKey["api-key"] = apiKey;
+            var apiConfig = new Configuration();
+            apiConfig.ApiKey["api-key"] = apiKey;
 
-            var apiInstance = new TransactionalEmailsApi();
+            var apiInstance = new TransactionalEmailsApi(apiConfig);
             var sendSmtpEmail = new SendSmtpEmail
             {
                 Sender = new SendSmtpEmailSender("Leave Management System", senderEmail),
