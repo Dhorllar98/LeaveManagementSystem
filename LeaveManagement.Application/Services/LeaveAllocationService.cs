@@ -1,6 +1,7 @@
 ﻿using LeaveManagement.Application.DTOs.LeaveAllocation;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
+using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
 
 namespace LeaveManagement.Application.Services;
@@ -9,15 +10,21 @@ public class LeaveAllocationService : ILeaveAllocationService
 {
     private readonly ILeaveAllocationRepository _repository;
     private readonly IUserRepository _userRepository;
+    private readonly ILeaveTypeRepository _leaveTypeRepository;
+    private readonly ILeaveRequestRepository _leaveRequestRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public LeaveAllocationService(
         ILeaveAllocationRepository repository,
         IUserRepository userRepository,
+        ILeaveTypeRepository leaveTypeRepository,
+        ILeaveRequestRepository leaveRequestRepository,
         IUnitOfWork unitOfWork)
     {
         _repository = repository;
         _userRepository = userRepository;
+        _leaveTypeRepository = leaveTypeRepository;
+        _leaveRequestRepository = leaveRequestRepository;
         _unitOfWork = unitOfWork;
     }
 
@@ -114,5 +121,37 @@ public class LeaveAllocationService : ILeaveAllocationService
         _repository.Delete(allocation);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    public async Task<IEnumerable<UserLeaveBalanceDto>> GetUserLeaveBalancesAsync(Guid userId, Guid orgId, int period, CancellationToken cancellationToken = default)
+    {
+        var leaveTypes = await _leaveTypeRepository.GetAllByOrganizationAsync(orgId, cancellationToken);
+        if (!leaveTypes.Any()) return Enumerable.Empty<UserLeaveBalanceDto>();
+
+        var userAllocations = await _repository.GetAllByOrganizationAsync(orgId, cancellationToken);
+        var filteredAllocations = userAllocations.Where(a => a.EmployeeId == userId && a.Period == period).ToList();
+
+        var approvedRequests = await _leaveRequestRepository.GetAllByOrganizationAsync(orgId, cancellationToken);
+        var userApprovedRequests = approvedRequests.Where(r => r.EmployeeId == userId
+                                                           && r.Status == LeaveStatus.Approved
+                                                           && r.StartDate.Year == period).ToList();
+
+        return leaveTypes.Select(lt =>
+        {
+            var allocation = filteredAllocations.FirstOrDefault(a => a.LeaveTypeId == lt.Id);
+            int totalDays = allocation?.NumberOfDays ?? lt.DefaultDays;
+
+            int daysUsed = userApprovedRequests
+                .Where(r => r.LeaveTypeId == lt.Id)
+                .Sum(r => (r.EndDate - r.StartDate).Days + 1);
+
+            return new UserLeaveBalanceDto
+            {
+                LeaveTypeId = lt.Id,
+                LeaveTypeName = lt.Name,
+                TotalDays = totalDays,
+                DaysUsed = daysUsed
+            };
+        });
     }
 }

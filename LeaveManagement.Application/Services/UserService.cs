@@ -187,7 +187,6 @@ public class UserService : IUserService
 
         Enum.TryParse<UserRole>(dto.Role, true, out var userRole);
 
-        // Creating user assigns them to a department as an employee, NOT as Department.TeamLeadId.
         var newUser = new User
         {
             Id = Guid.NewGuid(),
@@ -207,6 +206,26 @@ public class UserService : IUserService
         };
 
         await _context.Users.AddAsync(newUser, cancellationToken);
+
+        // Auto-provision initial leave allocations for current year
+        var leaveTypes = await _context.LeaveTypes
+            .Where(lt => lt.OrganizationId == org.Id)
+            .ToListAsync(cancellationToken);
+
+        int currentYear = DateTime.UtcNow.Year;
+        foreach (var lt in leaveTypes)
+        {
+            var allocation = new LeaveAllocation
+            {
+                Id = Guid.NewGuid(),
+                EmployeeId = newUser.Id,
+                LeaveTypeId = lt.Id,
+                NumberOfDays = lt.DefaultDays,
+                Period = currentYear
+            };
+            await _context.LeaveAllocations.AddAsync(allocation, cancellationToken);
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
 
         string baseUrl = string.IsNullOrWhiteSpace(dto.ResetPasswordUrl)
@@ -343,10 +362,14 @@ public class UserService : IUserService
             return (false, "Organization not found.", 400, null);
         }
 
-        // Scope department lookup strictly to HR's organization
         var departments = await _context.Departments
             .AsNoTracking()
             .Where(d => d.OrganizationId == org.Id)
+            .ToListAsync(cancellationToken);
+
+        var leaveTypes = await _context.LeaveTypes
+            .AsNoTracking()
+            .Where(lt => lt.OrganizationId == org.Id)
             .ToListAsync(cancellationToken);
 
         var existingEmails = await _context.Users
@@ -361,6 +384,7 @@ public class UserService : IUserService
         var emailTasks = new List<Task>();
         var errors = new List<string>();
         int rowNumber = 1;
+        int currentYear = DateTime.UtcNow.Year;
 
         using var reader = new StreamReader(file.OpenReadStream());
         await reader.ReadLineAsync(cancellationToken);
@@ -427,6 +451,19 @@ public class UserService : IUserService
             await _context.Users.AddAsync(newUser, cancellationToken);
             createdUsers.Add(newUser);
             emailHashSet.Add(email.ToLower());
+
+            foreach (var lt in leaveTypes)
+            {
+                var allocation = new LeaveAllocation
+                {
+                    Id = Guid.NewGuid(),
+                    EmployeeId = newUser.Id,
+                    LeaveTypeId = lt.Id,
+                    NumberOfDays = lt.DefaultDays,
+                    Period = currentYear
+                };
+                await _context.LeaveAllocations.AddAsync(allocation, cancellationToken);
+            }
 
             string emailBody = $@"
                 <h3>Welcome to LeaveFlow, {fullName}!</h3>

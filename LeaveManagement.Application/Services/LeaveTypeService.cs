@@ -8,11 +8,19 @@ namespace LeaveManagement.Application.Services;
 public class LeaveTypeService : ILeaveTypeService
 {
     private readonly ILeaveTypeRepository _repository;
+    private readonly IUserRepository _userRepository;
+    private readonly ILeaveAllocationRepository _allocationRepository;
     private readonly IUnitOfWork _unitOfWork;
 
-    public LeaveTypeService(ILeaveTypeRepository repository, IUnitOfWork unitOfWork)
+    public LeaveTypeService(
+        ILeaveTypeRepository repository,
+        IUserRepository userRepository,
+        ILeaveAllocationRepository allocationRepository,
+        IUnitOfWork unitOfWork)
     {
         _repository = repository;
+        _userRepository = userRepository;
+        _allocationRepository = allocationRepository;
         _unitOfWork = unitOfWork;
     }
 
@@ -50,6 +58,24 @@ public class LeaveTypeService : ILeaveTypeService
         };
 
         await _repository.AddAsync(leaveType, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Auto-allocate this new LeaveType for all existing organization employees in the current year
+        var orgUsers = await _userRepository.GetAllByOrganizationAsync(orgId, cancellationToken);
+        int currentYear = DateTime.UtcNow.Year;
+
+        foreach (var user in orgUsers)
+        {
+            var allocation = new LeaveAllocation
+            {
+                EmployeeId = user.Id,
+                LeaveTypeId = leaveType.Id,
+                NumberOfDays = leaveType.DefaultDays,
+                Period = currentYear
+            };
+            await _allocationRepository.AddAsync(allocation, cancellationToken);
+        }
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return new LeaveTypeDto

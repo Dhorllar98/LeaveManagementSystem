@@ -42,6 +42,30 @@ public class LeaveAllocationsController : BaseController
         return Ok(result);
     }
 
+    [HttpGet("my-balances")]
+    public async Task<ActionResult<IEnumerable<UserLeaveBalanceDto>>> GetMyLeaveBalances([FromQuery] int? period, CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
+
+        int targetPeriod = period ?? DateTime.UtcNow.Year;
+        var balances = await _allocationService.GetUserLeaveBalancesAsync(currentUserId, orgId.Value, targetPeriod, cancellationToken);
+        return Ok(balances);
+    }
+
+    [HttpGet("user-balances/{userId:guid}")]
+    [Authorize(Roles = "HR,TeamLead")]
+    public async Task<ActionResult<IEnumerable<UserLeaveBalanceDto>>> GetUserLeaveBalances(Guid userId, [FromQuery] int? period, CancellationToken cancellationToken)
+    {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
+
+        int targetPeriod = period ?? DateTime.UtcNow.Year;
+        var balances = await _allocationService.GetUserLeaveBalancesAsync(userId, orgId.Value, targetPeriod, cancellationToken);
+        return Ok(balances);
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<LeaveAllocationDto>> GetLeaveAllocation(Guid id, CancellationToken cancellationToken)
     {
