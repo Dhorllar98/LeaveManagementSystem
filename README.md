@@ -26,14 +26,25 @@ A production-grade RESTful API built with **.NET 9** and **Clean Architecture** 
 
 ---
 
+## ⚡ Key System Capabilities
+
+* 🔒 **Request Idempotency:** Safe replay handling for mutating HTTP calls (`POST`, `PUT`, `DELETE`) via the `X-Idempotency-Key` request header to prevent duplicate submissions on network retries or rapid UI double-clicks.
+* 📜 **Automated Audit Trail:** System-wide Entity Framework Core `SaveChangesAsync` interceptor that records JSON diffs (`Old` vs `New` values) across insertions, updates, and deletions into an `AuditLogs` dataset.
+* 🛑 **Global Exception Handling & Tracing:** Unified API exception middleware that standardizes 4xx/5xx payloads with ASP.NET Core `TraceId` identifiers and handles `504 Gateway Timeout` cancellations cleanly.
+* 🛡️ **Rate Limiting & Security:** Partitioned fixed-window rate limiter (20 requests per 10s per IP) and thread-safe isolated email dispatching.
+
+---
+
 ## 🛠️ Tech Stack & Architecture
 
 * **Framework:** .NET 9 Web API
 * **Architecture:** Clean Architecture (Domain, Application, Infrastructure, Api)
-* **Database:** PostgreSQL (with Entity Framework Core)
+* **Database & ORM:** PostgreSQL with Entity Framework Core
+* **Validation:** FluentValidation pipeline filters
+* **Caching & Resilience:** `.NET MemoryCache` for Idempotency evaluation
 * **Authentication:** JWT (JSON Web Tokens) & BCrypt Password Hashing
 * **Media Storage:** Cloudinary SDK (Organization logos)
-* **Email Service:** Brevo HTTP API Integration
+* **Email Service:** Thread-Safe Brevo HTTP API Integration
 * **Deployment:** Render (Backend) & Vercel (Frontend)
 
 ---
@@ -47,8 +58,12 @@ git clone [https://github.com/Dhorllar98/LeaveManagementSystem.git](https://gith
 # Navigate to project directory
 cd LeaveManagementSystem
 
-# Build the solution
+# Restore dependencies & build solution
+dotnet restore
 dotnet build
+
+# Apply database migrations
+dotnet ef database update --project LeaveManagement.Infrastructure --startup-project LeaveManagement.Api
 
 # Run the API project
 dotnet run --project LeaveManagement.Api
