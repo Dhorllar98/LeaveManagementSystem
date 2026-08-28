@@ -1,4 +1,5 @@
 ﻿using LeaveManagement.Application.Common.Models;
+using LeaveManagement.Application.DTOs.LeaveAllocation;
 using LeaveManagement.Application.DTOs.User;
 using LeaveManagement.Application.DTOs.Users;
 using LeaveManagement.Application.Interfaces;
@@ -14,12 +15,18 @@ public class UserService : IUserService
 {
     private readonly IAppDbContext _context;
     private readonly IEmailService _emailService;
+    private readonly ILeaveAllocationService _leaveAllocationService;
     private readonly ILogger<UserService> _logger;
 
-    public UserService(IAppDbContext context, IEmailService emailService, ILogger<UserService> logger)
+    public UserService(
+        IAppDbContext context,
+        IEmailService emailService,
+        ILeaveAllocationService leaveAllocationService,
+        ILogger<UserService> logger)
     {
         _context = context;
         _emailService = emailService;
+        _leaveAllocationService = leaveAllocationService;
         _logger = logger;
     }
 
@@ -91,6 +98,19 @@ public class UserService : IUserService
             })
             .ToListAsync(cancellationToken);
 
+        // Populate detailed leave balances for each user on the current page
+        int currentYear = DateTime.UtcNow.Year;
+        foreach (var userDto in users)
+        {
+            var balances = await _leaveAllocationService.GetUserLeaveBalancesAsync(
+                userDto.Id,
+                orgId.Value,
+                currentYear,
+                cancellationToken);
+
+            userDto.LeaveBalances = balances.ToList();
+        }
+
         return new PagedResult<UserResponseDto>
         {
             Items = users,
@@ -105,7 +125,7 @@ public class UserService : IUserService
         var orgId = await GetOrganizationIdAsync(currentUserId, cancellationToken);
         if (orgId == null) return null;
 
-        return await _context.Users
+        var userDto = await _context.Users
             .AsNoTracking()
             .Where(u => u.Id == id && u.OrganizationId == orgId)
             .Select(u => new UserResponseDto
@@ -125,6 +145,20 @@ public class UserService : IUserService
                 CreatedAt = u.CreatedAt
             })
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (userDto != null)
+        {
+            int currentYear = DateTime.UtcNow.Year;
+            var balances = await _leaveAllocationService.GetUserLeaveBalancesAsync(
+                userDto.Id,
+                orgId.Value,
+                currentYear,
+                cancellationToken);
+
+            userDto.LeaveBalances = balances.ToList();
+        }
+
+        return userDto;
     }
 
     public async Task<(bool Success, string Message, int StatusCode, object? Data)> ProvisionUserAsync(
