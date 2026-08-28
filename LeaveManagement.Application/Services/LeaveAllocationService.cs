@@ -143,7 +143,7 @@ public class LeaveAllocationService : ILeaveAllocationService
 
             int daysUsed = userApprovedRequests
                 .Where(r => r.LeaveTypeId == lt.Id)
-                .Sum(r => (r.EndDate - r.StartDate).Days + 1);
+                .Sum(r => r.NumberOfDays);
 
             return new UserLeaveBalanceDto
             {

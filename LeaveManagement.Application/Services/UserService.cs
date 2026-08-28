@@ -346,9 +346,15 @@ public class UserService : IUserService
         }
 
         if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName;
+
         if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email;
+
         if (!string.IsNullOrWhiteSpace(dto.Designation)) user.Designation = dto.Designation;
-        if (dto.LeaveBalance.HasValue) user.LeaveBalance = dto.LeaveBalance.Value;
+
+        if (dto.LeaveBalance.HasValue)
+        {
+            user.LeaveBalance = Math.Max(0, dto.LeaveBalance.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(dto.Role) && Enum.TryParse<UserRole>(dto.Role, true, out var parsedRole))
         {
