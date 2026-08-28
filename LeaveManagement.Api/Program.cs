@@ -86,10 +86,13 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddMemoryCache();
+
 var app = builder.Build();
 
 app.UseCors("AllowAll");
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<IdempotencyMiddleware>();
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
