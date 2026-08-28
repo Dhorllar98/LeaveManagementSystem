@@ -8,7 +8,6 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext context)
     {
-        // Build all tables directly from current C# DbContext models
         await context.Database.EnsureCreatedAsync();
 
         // Seed Default Organization
@@ -27,7 +26,7 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        // AUTO-BACKFILL STEP: Assign orphaned NULL records across ALL tables to default organization
+        // AUTO-BACKFILL STEP
         await context.Database.ExecuteSqlRawAsync(@"
             UPDATE ""Users"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
             UPDATE ""LeaveRequests"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
@@ -35,40 +34,45 @@ public static class DbInitializer
             UPDATE ""LeaveTypes"" SET ""OrganizationId"" = {0} WHERE ""OrganizationId"" IS NULL;
         ", defaultOrg.Id);
 
-        // Leave Types (Assigned specifically to Default Organization)
-        var defaultOrgHasLeaveTypes = await context.LeaveTypes.AnyAsync(l => l.OrganizationId == defaultOrg.Id);
-        if (!defaultOrgHasLeaveTypes)
+        // Seed Default Leave Types
+        var annualLeave = await context.LeaveTypes.FirstOrDefaultAsync(l => l.Name == "Annual Leave" && l.OrganizationId == defaultOrg.Id);
+        if (annualLeave == null)
         {
-            var leaveTypes = new List<LeaveType>
-            {
-                new() { Id = Guid.NewGuid(), Name = "Annual Leave", DefaultDays = 20, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow },
-                new() { Id = Guid.NewGuid(), Name = "Sick Leave", DefaultDays = 10, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow },
-                new() { Id = Guid.NewGuid(), Name = "Maternity/Paternity Leave", DefaultDays = 30, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow }
-            };
-
-            await context.LeaveTypes.AddRangeAsync(leaveTypes);
-            await context.SaveChangesAsync();
+            annualLeave = new LeaveType { Id = Guid.NewGuid(), Name = "Annual Leave", DefaultDays = 20, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow };
+            await context.LeaveTypes.AddAsync(annualLeave);
         }
 
-        // Default Departments
-        Department hrDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Human Resources")
+        var sickLeave = await context.LeaveTypes.FirstOrDefaultAsync(l => l.Name == "Sick Leave" && l.OrganizationId == defaultOrg.Id);
+        if (sickLeave == null)
+        {
+            sickLeave = new LeaveType { Id = Guid.NewGuid(), Name = "Sick Leave", DefaultDays = 10, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow };
+            await context.LeaveTypes.AddAsync(sickLeave);
+        }
+
+        var maternityLeave = await context.LeaveTypes.FirstOrDefaultAsync(l => l.Name == "Maternity/Paternity Leave" && l.OrganizationId == defaultOrg.Id);
+        if (maternityLeave == null)
+        {
+            maternityLeave = new LeaveType { Id = Guid.NewGuid(), Name = "Maternity/Paternity Leave", DefaultDays = 30, OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow };
+            await context.LeaveTypes.AddAsync(maternityLeave);
+        }
+
+        await context.SaveChangesAsync();
+
+        // Seed Default Departments
+        Department hrDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Human Resources" && d.OrganizationId == defaultOrg.Id)
                             ?? new Department { Id = Guid.NewGuid(), Name = "Human Resources", OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow };
 
-        Department engDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Engineering")
+        Department engDept = await context.Departments.FirstOrDefaultAsync(d => d.Name == "Engineering" && d.OrganizationId == defaultOrg.Id)
                              ?? new Department { Id = Guid.NewGuid(), Name = "Engineering", OrganizationId = defaultOrg.Id, CreatedAt = DateTime.UtcNow };
-
-        hrDept.OrganizationId = defaultOrg.Id;
-        engDept.OrganizationId = defaultOrg.Id;
 
         if (context.Entry(hrDept).State == EntityState.Detached) await context.Departments.AddAsync(hrDept);
         if (context.Entry(engDept).State == EntityState.Detached) await context.Departments.AddAsync(engDept);
 
         await context.SaveChangesAsync();
 
-        // 6. Default Users
+        // Seed Default Users
         string defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Passw0rd123!");
 
-        // HR User
         var hrUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "hr@admin.com");
         if (hrUser == null)
         {
@@ -80,9 +84,7 @@ public static class DbInitializer
         hrUser.Designation = "HR Manager";
         hrUser.OrganizationId = defaultOrg.Id;
         hrUser.EmployeeCode = "SBSC-NIG-01";
-        hrUser.LeaveBalance = 20;
 
-        // Team Lead User
         var leadUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "teamlead@company.com");
         if (leadUser == null)
         {
@@ -94,9 +96,7 @@ public static class DbInitializer
         leadUser.Designation = "Lead Engineer";
         leadUser.OrganizationId = defaultOrg.Id;
         leadUser.EmployeeCode = "SBSC-NIG-02";
-        leadUser.LeaveBalance = 20;
 
-        // Employee User
         var empUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "john.doe@user.com");
         if (empUser == null)
         {
@@ -108,7 +108,36 @@ public static class DbInitializer
         empUser.Designation = "Backend Engineer";
         empUser.OrganizationId = defaultOrg.Id;
         empUser.EmployeeCode = "SBSC-NIG-03";
-        empUser.LeaveBalance = 20;
+
+        await context.SaveChangesAsync();
+
+        // Seed Leave Allocations for Default Users 
+        int currentYear = DateTime.UtcNow.Year;
+        var defaultUsers = new[] { hrUser, leadUser, empUser };
+        var defaultLeaveTypes = new[] { annualLeave, sickLeave, maternityLeave };
+
+        foreach (var user in defaultUsers)
+        {
+            foreach (var leaveType in defaultLeaveTypes)
+            {
+                bool exists = await context.LeaveAllocations.AnyAsync(a =>
+                    a.EmployeeId == user.Id &&
+                    a.LeaveTypeId == leaveType.Id &&
+                    a.Period == currentYear);
+
+                if (!exists)
+                {
+                    await context.LeaveAllocations.AddAsync(new LeaveAllocation
+                    {
+                        Id = Guid.NewGuid(),
+                        EmployeeId = user.Id,
+                        LeaveTypeId = leaveType.Id,
+                        NumberOfDays = leaveType.DefaultDays,
+                        Period = currentYear
+                    });
+                }
+            }
+        }
 
         await context.SaveChangesAsync();
     }
