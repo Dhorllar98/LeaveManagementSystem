@@ -1,4 +1,6 @@
-﻿namespace LeaveManagement.Application.DTOs.User;
+﻿using LeaveManagement.Application.DTOs.LeaveAllocation;
+
+namespace LeaveManagement.Application.DTOs.User;
 
 public class UserResponseDto
 {
@@ -15,4 +17,7 @@ public class UserResponseDto
     public string Role { get; set; } = string.Empty;
     public int LeaveBalance { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    // Detailed leave balance list per leave type
+    public List<UserLeaveBalanceDto> LeaveBalances { get; set; } = new();
 }
