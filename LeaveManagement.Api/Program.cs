@@ -37,6 +37,10 @@ builder.Services.AddApplicationServices();
 // 3. Infrastructure Layer
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
+// --- Health Check Configuration ---
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>();
+
 // --- Cloudinary Registration & Validation ---
 var cloudName = builder.Configuration["CloudinarySettings:CloudName"] ?? builder.Configuration["Cloudinary:CloudName"];
 var apiKey = builder.Configuration["CloudinarySettings:ApiKey"] ?? builder.Configuration["Cloudinary:ApiKey"];
@@ -111,6 +115,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 using (var scope = app.Services.CreateScope())
 {
