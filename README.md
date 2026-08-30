@@ -4,10 +4,11 @@ A production-grade RESTful API built with **.NET 9** and **Clean Architecture** 
 
 ---
 
-## 🌐 Live Demos & Links
+## 🌐 Live Demos & Endpoints
 
 * 🎨 **Frontend Application (Vercel):** [https://new-leave-management-system-qszg.vercel.app/](https://new-leave-management-system-qszg.vercel.app/)
 * ⚙️ **Backend Swagger API (Render):** [https://leavemanagementsystem-3sja.onrender.com/swagger](https://leavemanagementsystem-3sja.onrender.com/swagger)
+* 🩺 **Health Check Endpoint:** [https://leavemanagementsystem-3sja.onrender.com/health](https://leavemanagementsystem-3sja.onrender.com/health)
 
 ---
 
@@ -28,6 +29,7 @@ A production-grade RESTful API built with **.NET 9** and **Clean Architecture** 
 
 ## ⚡ Key System Capabilities
 
+* 🩺 **Automated Health Monitoring:** Built-in EF Core liveness probing (`/health`) that continuously checks application state and PostgreSQL connectivity to guarantee zero-downtime deployments on Render.
 * 🔒 **Request Idempotency:** Safe replay handling for mutating HTTP calls (`POST`, `PUT`, `DELETE`) via the `X-Idempotency-Key` request header to prevent duplicate submissions on network retries or rapid UI double-clicks.
 * 📜 **Automated Audit Trail:** System-wide Entity Framework Core `SaveChangesAsync` interceptor that records JSON diffs (`Old` vs `New` values) across insertions, updates, and deletions into an `AuditLogs` dataset.
 * 🛑 **Global Exception Handling & Tracing:** Unified API exception middleware that standardizes 4xx/5xx payloads with ASP.NET Core `TraceId` identifiers and handles `504 Gateway Timeout` cancellations cleanly.
@@ -40,6 +42,7 @@ A production-grade RESTful API built with **.NET 9** and **Clean Architecture** 
 * **Framework:** .NET 9 Web API
 * **Architecture:** Clean Architecture (Domain, Application, Infrastructure, Api)
 * **Database & ORM:** PostgreSQL with Entity Framework Core
+* **Diagnostics & Health:** `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore`
 * **Validation:** FluentValidation pipeline filters
 * **Caching & Resilience:** `.NET MemoryCache` for Idempotency evaluation
 * **Authentication:** JWT (JSON Web Tokens) & BCrypt Password Hashing
