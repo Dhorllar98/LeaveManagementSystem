@@ -70,6 +70,36 @@ public class LeaveRequestsController : BaseController
         });
     }
 
+    [HttpGet("on-leave-today")]
+    public async Task<IActionResult> GetOnLeaveToday(CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        var result = await _leaveRequestService.GetOnLeaveTodayAsync(currentUserId, cancellationToken);
+        return Ok(new
+        {
+            success = true,
+            message = "Employees on leave today retrieved successfully.",
+            data = result
+        });
+    }
+
+    [HttpGet("approved")]
+    public async Task<IActionResult> GetApprovedRequests(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        var result = await _leaveRequestService.GetApprovedLeaveRequestsAsync(currentUserId, startDate, endDate, cancellationToken);
+
+        return Ok(new
+        {
+            success = true,
+            message = "Approved leave requests retrieved successfully.",
+            data = result
+        });
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {

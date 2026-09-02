@@ -3,9 +3,12 @@
 public static class DateHelper
 {
     /// <summary>
-    /// Calculates the number of working days (Monday - Friday) between two dates inclusive.
+    /// Calculates working days (Mon-Fri) excluding weekends and public holidays.
     /// </summary>
-    public static int CalculateBusinessDays(DateTime startDate, DateTime endDate)
+    public static int CalculateBusinessDays(
+        DateTime startDate,
+        DateTime endDate,
+        HashSet<DateTime>? publicHolidays = null)
     {
         if (startDate > endDate)
             return 0;
@@ -13,10 +16,14 @@ public static class DateHelper
         int businessDays = 0;
         DateTime currentDate = startDate.Date;
         DateTime targetDate = endDate.Date;
+        publicHolidays ??= new HashSet<DateTime>();
 
         while (currentDate <= targetDate)
         {
-            if (currentDate.DayOfWeek != DayOfWeek.Saturday && currentDate.DayOfWeek != DayOfWeek.Sunday)
+            bool isWeekend = currentDate.DayOfWeek == DayOfWeek.Saturday || currentDate.DayOfWeek == DayOfWeek.Sunday;
+            bool isPublicHoliday = publicHolidays.Contains(currentDate);
+
+            if (!isWeekend && !isPublicHoliday)
             {
                 businessDays++;
             }

@@ -12,6 +12,10 @@ public interface IUserService
         UserFilterDto filter,
         CancellationToken cancellationToken = default);
 
+    Task<IEnumerable<UserResponseDto>> GetDepartmentColleaguesAsync(
+        Guid currentUserId,
+        CancellationToken cancellationToken = default);
+
     Task<UserResponseDto?> GetUserByIdAsync(
         Guid id,
         Guid currentUserId,

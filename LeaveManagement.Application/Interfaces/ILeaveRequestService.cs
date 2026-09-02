@@ -16,6 +16,16 @@ public interface ILeaveRequestService
         LeaveRequestQueryParameters query,
         CancellationToken cancellationToken = default);
 
+    Task<IEnumerable<LeaveRequestSummaryDto>> GetOnLeaveTodayAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<IEnumerable<LeaveRequestSummaryDto>> GetApprovedLeaveRequestsAsync(
+        Guid userId,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        CancellationToken cancellationToken = default);
+
     Task<LeaveRequestSummaryDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 
     Task<(bool Success, string Message, object? Data, int StatusCode)> CreateLeaveRequestAsync(
