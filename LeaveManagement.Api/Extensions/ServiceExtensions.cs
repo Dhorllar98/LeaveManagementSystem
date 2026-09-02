@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
 using FluentValidation.AspNetCore;
+using LeaveManagement.Api.Services;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Application.Services;
 using LeaveManagement.Application.Validators;
@@ -22,6 +23,10 @@ public static class ServiceExtensions
                 options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
                 options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
             });
+
+        // 1. Register SignalR & Notification Service
+        services.AddSignalR();
+        services.AddScoped<IRealtimeNotificationService, SignalRNotificationService>();
 
         services.AddFluentValidationAutoValidation();
 
@@ -112,6 +117,17 @@ public static class ServiceExtensions
 
                 options.Events = new JwtBearerEvents
                 {
+                    // 2. Extract token from URL query string for WebSockets/SignalR
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/notifications"))
+                        {
+                            context.Token = accessToken;
+                        }
+                        return Task.CompletedTask;
+                    },
                     OnAuthenticationFailed = context =>
                     {
                         Console.ForegroundColor = ConsoleColor.Red;

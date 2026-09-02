@@ -12,6 +12,7 @@ public interface IAppDbContext
     DbSet<LeaveAllocation> LeaveAllocations { get; }
     DbSet<LeaveType> LeaveTypes { get; }
     DbSet<NotificationSetting> NotificationSettings { get; }
+    DbSet<PublicHoliday> PublicHolidays { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

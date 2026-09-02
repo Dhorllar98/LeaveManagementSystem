@@ -1,4 +1,5 @@
 using LeaveManagement.Api.Extensions;
+using LeaveManagement.Api.Hubs;
 using LeaveManagement.Api.Middleware;
 using LeaveManagement.Application.Common.Models;
 using LeaveManagement.Application.Interfaces;
@@ -116,6 +117,9 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHealthChecks("/health");
+
+// Map SignalR Hub Endpoint
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 using (var scope = app.Services.CreateScope())
 {

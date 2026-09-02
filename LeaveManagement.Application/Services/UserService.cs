@@ -98,7 +98,6 @@ public class UserService : IUserService
             })
             .ToListAsync(cancellationToken);
 
-        // Populate detailed leave balances for each user on the current page
         int currentYear = DateTime.UtcNow.Year;
         foreach (var userDto in users)
         {
@@ -118,6 +117,43 @@ public class UserService : IUserService
             PageNumber = pageNumber,
             PageSize = pageSize
         };
+    }
+
+    public async Task<IEnumerable<UserResponseDto>> GetDepartmentColleaguesAsync(
+        Guid currentUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+
+        if (currentUser == null || !currentUser.OrganizationId.HasValue || !currentUser.DepartmentId.HasValue)
+        {
+            return Enumerable.Empty<UserResponseDto>();
+        }
+
+        return await _context.Users
+            .AsNoTracking()
+            .Where(u => u.OrganizationId == currentUser.OrganizationId.Value &&
+                        u.DepartmentId == currentUser.DepartmentId.Value &&
+                        u.Id != currentUserId)
+            .Select(u => new UserResponseDto
+            {
+                Id = u.Id,
+                FullName = u.FullName,
+                Email = u.Email,
+                EmployeeCode = u.EmployeeCode,
+                OrganizationId = u.OrganizationId,
+                DepartmentId = u.DepartmentId,
+                DepartmentName = u.Department != null ? u.Department.Name : null,
+                TeamLeadId = u.TeamLeadId,
+                TeamLeadName = u.TeamLead != null ? u.TeamLead.FullName : null,
+                Designation = u.Designation,
+                Role = u.Role.ToString(),
+                LeaveBalance = u.LeaveBalance,
+                CreatedAt = u.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<UserResponseDto?> GetUserByIdAsync(Guid id, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -241,7 +277,6 @@ public class UserService : IUserService
 
         await _context.Users.AddAsync(newUser, cancellationToken);
 
-        // Auto-provision initial leave allocations for current year
         var leaveTypes = await _context.LeaveTypes
             .Where(lt => lt.OrganizationId == org.Id)
             .ToListAsync(cancellationToken);

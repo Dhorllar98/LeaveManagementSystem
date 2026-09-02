@@ -8,7 +8,6 @@ using LeaveManagement.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System;
 
 namespace LeaveManagement.Application.Services;
 
@@ -44,6 +43,67 @@ public class LeaveRequestService : ILeaveRequestService
     {
         var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
         return user?.OrganizationId;
+    }
+
+    private async Task<HashSet<DateTime>> GetPublicHolidaysAsync(Guid orgId, DateTime start, DateTime end, CancellationToken cancellationToken)
+    {
+        var dates = await _context.PublicHolidays
+            .AsNoTracking()
+            .Where(ph => ph.OrganizationId == orgId && ph.Date.Date >= start.Date && ph.Date.Date <= end.Date)
+            .Select(ph => ph.Date.Date)
+            .ToListAsync(cancellationToken);
+
+        return new HashSet<DateTime>(dates);
+    }
+
+    public async Task<IEnumerable<LeaveRequestSummaryDto>> GetOnLeaveTodayAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var orgId = await GetUserOrgIdAsync(userId, cancellationToken);
+        if (orgId == null) return Enumerable.Empty<LeaveRequestSummaryDto>();
+
+        var today = DateTime.UtcNow.Date;
+
+        var activeLeaves = await _context.LeaveRequests
+            .AsNoTracking()
+            .Include(l => l.Employee).ThenInclude(e => e.Department)
+            .Include(l => l.LeaveType)
+            .Include(l => l.HandoverUser)
+            .Where(l => l.OrganizationId == orgId &&
+                        l.Status == LeaveStatus.Approved &&
+                        l.StartDate.Date <= today &&
+                        l.EndDate.Date >= today)
+            .ToListAsync(cancellationToken);
+
+        return MapToSummaryDtos(activeLeaves);
+    }
+
+    public async Task<IEnumerable<LeaveRequestSummaryDto>> GetApprovedLeaveRequestsAsync(
+        Guid userId,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var orgId = await GetUserOrgIdAsync(userId, cancellationToken);
+        if (orgId == null) return Enumerable.Empty<LeaveRequestSummaryDto>();
+
+        var query = _context.LeaveRequests
+            .AsNoTracking()
+            .Include(l => l.Employee).ThenInclude(e => e.Department)
+            .Include(l => l.LeaveType)
+            .Include(l => l.HandoverUser)
+            .Where(l => l.OrganizationId == orgId && l.Status == LeaveStatus.Approved);
+
+        if (startDate.HasValue)
+            query = query.Where(l => l.EndDate.Date >= startDate.Value.Date);
+
+        if (endDate.HasValue)
+            query = query.Where(l => l.StartDate.Date <= endDate.Value.Date);
+
+        var approvedLeaves = await query
+            .OrderByDescending(l => l.StartDate)
+            .ToListAsync(cancellationToken);
+
+        return MapToSummaryDtos(approvedLeaves);
     }
 
     public async Task<(IEnumerable<LeaveRequestSummaryDto> Items, int TotalCount)?> GetPagedLeaveRequestsAsync(
@@ -124,9 +184,21 @@ public class LeaveRequestService : ILeaveRequestService
         if (!leaveTypeExists)
             return (false, "The selected leave type does not exist.", null, 400);
 
-        int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate);
+        if (dto.HandoverUserId.HasValue)
+        {
+            if (dto.HandoverUserId.Value == userId)
+                return (false, "You cannot select yourself as the handover colleague.", null, 400);
+
+            var handoverUser = await _userRepository.GetByIdAsync(dto.HandoverUserId.Value, cancellationToken);
+            if (handoverUser == null || handoverUser.DepartmentId != applicant.DepartmentId)
+                return (false, "The selected handover colleague must belong to your department.", null, 400);
+        }
+
+        var publicHolidays = await GetPublicHolidaysAsync(applicant.OrganizationId.Value, dto.StartDate, dto.EndDate, cancellationToken);
+        int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate, publicHolidays);
+
         if (businessDays <= 0)
-            return (false, "The selected date range does not contain any official working days (Monday - Friday).", null, 400);
+            return (false, "The selected date range contains no official working days (excludes weekends and public holidays).", null, 400);
 
         if (applicant.LeaveBalance < businessDays)
             return (false, $"Insufficient leave balance. You requested {businessDays} working day(s), but only have {Math.Max(0, applicant.LeaveBalance)} day(s) remaining.", null, 400);
@@ -137,6 +209,7 @@ public class LeaveRequestService : ILeaveRequestService
             EmployeeId = userId,
             OrganizationId = applicant.OrganizationId.Value,
             LeaveTypeId = dto.LeaveTypeId,
+            HandoverUserId = dto.HandoverUserId,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
             NumberOfDays = businessDays,
@@ -155,6 +228,7 @@ public class LeaveRequestService : ILeaveRequestService
             id = leaveRequest.Id,
             employeeId = leaveRequest.EmployeeId,
             leaveTypeId = leaveRequest.LeaveTypeId,
+            handoverUserId = leaveRequest.HandoverUserId,
             startDate = leaveRequest.StartDate,
             endDate = leaveRequest.EndDate,
             numberOfDays = leaveRequest.NumberOfDays,
@@ -180,11 +254,26 @@ public class LeaveRequestService : ILeaveRequestService
         if (leave.Status != LeaveStatus.Pending)
             return (false, "Only pending leave requests can be updated.", 400, null);
 
-        int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate);
+        var applicant = await _userRepository.GetByIdAsync(userId, cancellationToken);
+
+        if (dto.HandoverUserId.HasValue)
+        {
+            if (dto.HandoverUserId.Value == userId)
+                return (false, "You cannot select yourself as the handover colleague.", 400, null);
+
+            var handoverUser = await _userRepository.GetByIdAsync(dto.HandoverUserId.Value, cancellationToken);
+            if (handoverUser == null || handoverUser.DepartmentId != applicant?.DepartmentId)
+                return (false, "The selected handover colleague must belong to your department.", 400, null);
+        }
+
+        var publicHolidays = await GetPublicHolidaysAsync(leave.OrganizationId!.Value, dto.StartDate, dto.EndDate, cancellationToken);
+        int businessDays = DateHelper.CalculateBusinessDays(dto.StartDate, dto.EndDate, publicHolidays);
+
         if (businessDays <= 0)
-            return (false, "The selected date range does not contain any official working days (Monday - Friday).", 400, null);
+            return (false, "The selected date range contains no official working days.", 400, null);
 
         leave.LeaveTypeId = dto.LeaveTypeId;
+        leave.HandoverUserId = dto.HandoverUserId;
         leave.StartDate = dto.StartDate;
         leave.EndDate = dto.EndDate;
         leave.NumberOfDays = businessDays;
@@ -208,8 +297,7 @@ public class LeaveRequestService : ILeaveRequestService
         if (leave == null || (leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId))
             return (false, "Leave request not found.", 404);
 
-        if (leave.EmployeeId != userId && !isLeadOrHr)
-            return (false, "Forbidden", 403);
+        if (leave.EmployeeId != userId && !isLeadOrHr) return (false, "Forbidden", 403);
 
         if (leave.Status != LeaveStatus.Pending)
             return (false, "Cannot delete a request that has already been processed.", 400);
@@ -316,6 +404,8 @@ public class LeaveRequestService : ILeaveRequestService
             Id = l.LeaveType.Id,
             Name = l.LeaveType.Name
         } : null,
+        HandoverUserId = l.HandoverUserId,
+        HandoverUserName = l.HandoverUser?.FullName,
         StartDate = l.StartDate,
         EndDate = l.EndDate,
         NumberOfDays = l.NumberOfDays,
@@ -334,6 +424,7 @@ public class LeaveRequestService : ILeaveRequestService
                 using var scope = _scopeFactory.CreateScope();
                 var dbContext = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                var realtimeService = scope.ServiceProvider.GetService<IRealtimeNotificationService>();
 
                 var settings = await dbContext.NotificationSettings
                     .AsNoTracking()
@@ -341,16 +432,16 @@ public class LeaveRequestService : ILeaveRequestService
 
                 if (settings == null || settings.EnableNewLeaveRequestEmails)
                 {
-                    // Target HRs, explicit direct Team Leads, and Department Team Leads
-                    var hrAndTeamLeadEmails = await dbContext.Users
+                    var recipients = await dbContext.Users
                         .Where(u => u.OrganizationId == applicant.OrganizationId &&
                                     (u.Role == UserRole.HR ||
                                      (applicant.TeamLeadId.HasValue && u.Id == applicant.TeamLeadId.Value) ||
                                      (applicant.DepartmentId.HasValue && u.DepartmentId == applicant.DepartmentId.Value && u.Role == UserRole.TeamLead)))
-                        .Select(u => u.Email)
-                        .Where(e => !string.IsNullOrEmpty(e))
-                        .Distinct()
+                        .Select(u => new { u.Id, u.Email })
                         .ToListAsync();
+
+                    string notificationTitle = "New Leave Request";
+                    string notificationMsg = $"{applicant.FullName} requested {businessDays} day(s) from {dto.StartDate:yyyy-MM-dd} to {dto.EndDate:yyyy-MM-dd}.";
 
                     string subject = $"New Leave Request - {applicant.FullName}";
                     string body = $@"
@@ -361,15 +452,47 @@ public class LeaveRequestService : ILeaveRequestService
                         <p><strong>Reason:</strong> {dto.Reason}</p>
                         <p>Log in to LeaveFlow to review and process this request.</p>";
 
-                    foreach (var email in hrAndTeamLeadEmails)
+                    foreach (var recipient in recipients)
                     {
-                        await emailService.SendEmailAsync(email, subject, body);
+                        if (!string.IsNullOrEmpty(recipient.Email))
+                        {
+                            await emailService.SendEmailAsync(recipient.Email, subject, body);
+                        }
+
+                        if (realtimeService != null)
+                        {
+                            await realtimeService.SendNotificationToUserAsync(recipient.Id, notificationTitle, notificationMsg);
+                        }
+                    }
+
+                    if (dto.HandoverUserId.HasValue)
+                    {
+                        var handoverUser = await dbContext.Users.FindAsync(dto.HandoverUserId.Value);
+                        if (handoverUser != null)
+                        {
+                            if (!string.IsNullOrEmpty(handoverUser.Email))
+                            {
+                                string handoverSubject = $"Handover Assignment - {applicant.FullName}";
+                                string handoverBody = $@"
+                                    <h3>Leave Handover Assignment</h3>
+                                    <p>Hi {handoverUser.FullName},</p>
+                                    <p><strong>{applicant.FullName}</strong> has designated you as their handover contact for their upcoming leave from <strong>{dto.StartDate:yyyy-MM-dd}</strong> to <strong>{dto.EndDate:yyyy-MM-dd}</strong>.</p>
+                                    <p><strong>Reason:</strong> {dto.Reason}</p>";
+
+                                await emailService.SendEmailAsync(handoverUser.Email, handoverSubject, handoverBody);
+                            }
+
+                            if (realtimeService != null)
+                            {
+                                await realtimeService.SendNotificationToUserAsync(handoverUser.Id, "Handover Assignment", $"{applicant.FullName} designated you as their leave handover contact.");
+                            }
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending new leave request notification email.");
+                _logger.LogError(ex, "Error sending new leave request notification email or SignalR event.");
             }
         });
     }
@@ -383,6 +506,7 @@ public class LeaveRequestService : ILeaveRequestService
                 using var scope = _scopeFactory.CreateScope();
                 var dbContext = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                var realtimeService = scope.ServiceProvider.GetService<IRealtimeNotificationService>();
 
                 var settings = await dbContext.NotificationSettings
                     .AsNoTracking()
@@ -399,11 +523,20 @@ public class LeaveRequestService : ILeaveRequestService
                         <p>Your remaining leave balance is <strong>{applicant.LeaveBalance}</strong> days.</p>";
 
                     await emailService.SendEmailAsync(applicant.Email, subject, body);
+
+                    if (realtimeService != null)
+                    {
+                        await realtimeService.SendNotificationToUserAsync(
+                            applicant.Id,
+                            "Leave Request Approved",
+                            $"Your leave request from {leave.StartDate:yyyy-MM-dd} to {leave.EndDate:yyyy-MM-dd} was approved."
+                        );
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending approval email to employee.");
+                _logger.LogError(ex, "Error sending approval email or SignalR event to employee.");
             }
         });
     }
@@ -417,6 +550,7 @@ public class LeaveRequestService : ILeaveRequestService
                 using var scope = _scopeFactory.CreateScope();
                 var dbContext = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                var realtimeService = scope.ServiceProvider.GetService<IRealtimeNotificationService>();
 
                 var settings = await dbContext.NotificationSettings
                     .AsNoTracking()
@@ -432,11 +566,20 @@ public class LeaveRequestService : ILeaveRequestService
                         <p><strong>Reason / Comments:</strong> {comments ?? "No comments provided."}</p>";
 
                     await emailService.SendEmailAsync(applicant.Email, subject, body);
+
+                    if (realtimeService != null)
+                    {
+                        await realtimeService.SendNotificationToUserAsync(
+                            applicant.Id,
+                            "Leave Request Rejected",
+                            $"Your leave request from {leave.StartDate:yyyy-MM-dd} to {leave.EndDate:yyyy-MM-dd} was rejected."
+                        );
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending rejection email to employee.");
+                _logger.LogError(ex, "Error sending rejection email or SignalR event to employee.");
             }
         });
     }

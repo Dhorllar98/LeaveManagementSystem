@@ -18,6 +18,9 @@ public class LeaveRequest
     public Guid EmployeeId { get; set; }
     public User Employee { get; set; } = null!;
 
+    public Guid? HandoverUserId { get; set; }
+    public User? HandoverUser { get; set; }
+
     public int NumberOfDays { get; set; }
     public bool? Approved { get; set; }
     public LeaveStatus Status { get; set; }

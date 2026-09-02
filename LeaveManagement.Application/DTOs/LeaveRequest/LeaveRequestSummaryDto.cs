@@ -19,6 +19,9 @@ public class LeaveRequestSummaryDto
 
     public LeaveTypeSummaryDto? LeaveType { get; set; }
 
+    public Guid? HandoverUserId { get; set; }
+    public string? HandoverUserName { get; set; }
+
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
     public int NumberOfDays { get; set; }

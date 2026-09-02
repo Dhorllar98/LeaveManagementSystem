@@ -34,6 +34,19 @@ public class UsersController : BaseController
         return Ok(result);
     }
 
+    [HttpGet("department-colleagues")]
+    public async Task<IActionResult> GetDepartmentColleagues(CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        var result = await _userService.GetDepartmentColleaguesAsync(currentUserId, cancellationToken);
+        return Ok(new
+        {
+            success = true,
+            message = "Department colleagues retrieved successfully.",
+            data = result
+        });
+    }
+
     [HttpGet("{id:guid}")]
     [Authorize(Roles = "HR,TeamLead")]
     public async Task<IActionResult> GetUserById(Guid id, CancellationToken cancellationToken)
