@@ -221,10 +221,10 @@ public class LeaveRequestService : ILeaveRequestService
     }
 
     public async Task<(bool Success, string Message, int StatusCode)> ApproveLeaveAsync(
-     Guid id,
-     Guid currentUserId,
-     ManagerActionDto dto,
-     CancellationToken cancellationToken = default)
+        Guid id,
+        Guid currentUserId,
+        ManagerActionDto dto,
+        CancellationToken cancellationToken = default)
     {
         var orgId = await GetUserOrgIdAsync(currentUserId, cancellationToken);
         var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
@@ -241,7 +241,6 @@ public class LeaveRequestService : ILeaveRequestService
         var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
         if (applicant != null)
         {
-            // Reject if existing balance is insufficient or already zero/negative
             if (applicant.LeaveBalance < leave.NumberOfDays)
             {
                 return (false, $"Approval failed. The employee requested {leave.NumberOfDays} day(s), but only has {Math.Max(0, applicant.LeaveBalance)} day(s) remaining.", 400);
@@ -342,10 +341,14 @@ public class LeaveRequestService : ILeaveRequestService
 
                 if (settings == null || settings.EnableNewLeaveRequestEmails)
                 {
+                    // Target HRs, explicit direct Team Leads, and Department Team Leads
                     var hrAndTeamLeadEmails = await dbContext.Users
                         .Where(u => u.OrganizationId == applicant.OrganizationId &&
-                                    (u.Role == UserRole.HR || u.Id == applicant.TeamLeadId))
+                                    (u.Role == UserRole.HR ||
+                                     (applicant.TeamLeadId.HasValue && u.Id == applicant.TeamLeadId.Value) ||
+                                     (applicant.DepartmentId.HasValue && u.DepartmentId == applicant.DepartmentId.Value && u.Role == UserRole.TeamLead)))
                         .Select(u => u.Email)
+                        .Where(e => !string.IsNullOrEmpty(e))
                         .Distinct()
                         .ToListAsync();
 
