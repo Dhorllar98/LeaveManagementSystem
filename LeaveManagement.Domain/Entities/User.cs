@@ -17,6 +17,8 @@ public class User
     public string? Designation { get; set; }
     public int LeaveBalance { get; set; } = 20;
 
+    public int? LastLeaveResetYear { get; set; } // Tracks year of last annual renewal
+
     public string? RefreshToken { get; set; }
     public DateTime? RefreshTokenExpiryTime { get; set; }
 

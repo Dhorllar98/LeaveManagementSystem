@@ -13,6 +13,8 @@ public class Organization
     public string CodePrefix { get; set; } = string.Empty;
     public int LastEmployeeNumber { get; set; } = 0;
 
+    public int DefaultAnnualLeaveDays { get; set; } = 20; // Default leave allocation for employees in this org
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

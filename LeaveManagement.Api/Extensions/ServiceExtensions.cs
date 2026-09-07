@@ -5,6 +5,7 @@ using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Application.Services;
 using LeaveManagement.Application.Validators;
 using LeaveManagement.Infrastructure.Authentication;
+using LeaveManagement.Infrastructure.BackgroundServices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -74,6 +75,10 @@ public static class ServiceExtensions
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IUserService, UserService>();
+
+        // Annual Leave Reset Services
+        services.AddScoped<ILeaveResetService, LeaveResetService>();
+        services.AddHostedService<AnnualLeaveResetBackgroundService>();
 
         // Fluent Validators
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
