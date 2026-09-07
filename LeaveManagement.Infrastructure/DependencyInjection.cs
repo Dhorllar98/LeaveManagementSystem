@@ -2,7 +2,7 @@
 using LeaveManagement.Domain.Interfaces;
 using LeaveManagement.Infrastructure.Data;
 using LeaveManagement.Infrastructure.Repositories;
-using LeaveManagement.Infrastructure.Services; 
+using LeaveManagement.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,7 +31,8 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         // Infrastructure Services
-        services.AddScoped<IPhotoService, CloudinaryService>(); 
+        services.AddScoped<IPhotoService, CloudinaryService>();
+        services.AddScoped<IEmailService, EmailService>();
 
         return services;
     }

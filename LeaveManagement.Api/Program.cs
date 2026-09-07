@@ -1,19 +1,18 @@
+using CloudinaryDotNet;
 using LeaveManagement.Api.Extensions;
 using LeaveManagement.Api.Hubs;
 using LeaveManagement.Api.Middleware;
 using LeaveManagement.Application.Common.Models;
-using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Infrastructure;
-using LeaveManagement.Infrastructure.Authentication;
 using LeaveManagement.Infrastructure.Data;
 using LeaveManagement.Infrastructure.Services;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
-using CloudinaryDotNet;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- PORT LOCKDOWN: Ensure Kestrel only binds to the single cloud port ---
+// 1. Kestrel Cloud Port Binding
 var portEnv = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(portEnv) && int.TryParse(portEnv, out var cloudPort))
 {
@@ -23,26 +22,36 @@ if (!string.IsNullOrEmpty(portEnv) && int.TryParse(portEnv, out var cloudPort))
     });
 }
 
+// 2. Configuration Setup (Preserving User Secrets for Local Dev)
 builder.Configuration.Sources.Clear();
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false)
-    .AddEnvironmentVariables();
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false);
 
-// 1. Presentation & API Services
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets<Program>();
+}
+
+builder.Configuration.AddEnvironmentVariables();
+
+// 3. Configure Forwarded Headers for Cloud Reverse Proxies
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// 4. Core Service Registrations
 builder.Services.AddPresentationServices(builder.Configuration);
-
-// 2. Application Layer Services
 builder.Services.AddApplicationServices();
-
-// 3. Infrastructure Layer
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
-// --- Health Check Configuration ---
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>();
 
-// --- Cloudinary Registration & Validation ---
+// 5. Cloudinary Registration
 var cloudName = builder.Configuration["CloudinarySettings:CloudName"] ?? builder.Configuration["Cloudinary:CloudName"];
 var apiKey = builder.Configuration["CloudinarySettings:ApiKey"] ?? builder.Configuration["Cloudinary:ApiKey"];
 var apiSecret = builder.Configuration["CloudinarySettings:ApiSecret"] ?? builder.Configuration["Cloudinary:ApiSecret"];
@@ -56,15 +65,12 @@ var cloudinaryAccount = new Account(cloudName, apiKey, apiSecret);
 var cloudinary = new Cloudinary(cloudinaryAccount) { Api = { Secure = true } };
 
 builder.Services.AddSingleton(cloudinary);
-builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
-builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<IPhotoService, CloudinaryService>();
 
-// 4. JWT Authentication
+// 6. JWT Settings
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
-// 5. Rate Limiting Configuration
+// 7. Rate Limiting
 builder.Services.AddRateLimiter(options =>
 {
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
@@ -79,7 +85,7 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
-// 6. CORS Configuration
+// 8. CORS Configuration
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -95,9 +101,11 @@ builder.Services.AddMemoryCache();
 
 var app = builder.Build();
 
+// --- MIDDLEWARE PIPELINE ---
+
+app.UseForwardedHeaders(); // Must run first to resolve real client IP behind reverse proxies
 app.UseCors("AllowAll");
 app.UseMiddleware<ExceptionHandlingMiddleware>();
-app.UseMiddleware<IdempotencyMiddleware>();
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
@@ -115,12 +123,14 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Idempotency runs after auth so it can inspect User claims if needed
+app.UseMiddleware<IdempotencyMiddleware>();
+
 app.MapControllers();
 app.MapHealthChecks("/health");
-
-// Map SignalR Hub Endpoint
 app.MapHub<NotificationHub>("/hubs/notifications");
 
+// --- DATABASE MIGRATION & SEEDING ---
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;

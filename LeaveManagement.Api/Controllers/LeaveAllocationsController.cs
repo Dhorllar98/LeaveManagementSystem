@@ -116,4 +116,21 @@ public class LeaveAllocationsController : BaseController
 
         return NoContent();
     }
+
+    [HttpPost("reset-annual-balances")]
+    [Authorize(Roles = "HR")]
+    public async Task<IActionResult> ResetAnnualBalances([FromServices] ILeaveResetService resetService, CancellationToken cancellationToken)
+    {
+        var orgId = await GetUserOrganizationIdAsync(cancellationToken);
+        if (orgId == null) return BadRequest(new { message = "Organization not found for current user." });
+
+        var result = await resetService.ResetAnnualLeaveBalancesAsync(orgId.Value, cancellationToken);
+
+        return Ok(new
+        {
+            success = result.Success,
+            message = result.Message,
+            processedCount = result.ProcessedCount
+        });
+    }
 }
