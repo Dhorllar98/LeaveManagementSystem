@@ -1,6 +1,6 @@
 # 🏢 Leave Management System API
 
-A production-grade RESTful API built with **.NET 9** and **Clean Architecture** to streamline corporate employee leave requests, role-based workflow approvals, organization onboarding, public holiday tracking, and HR provisioning.
+A RESTful API built with .NET 9 and Clean Architecture for corporate leave requests: role-based approvals, organization onboarding, public holiday tracking, and HR provisioning.
 
 ---
 
