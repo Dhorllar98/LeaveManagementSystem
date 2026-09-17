@@ -30,14 +30,14 @@ A RESTful API built with .NET 9 and Clean Architecture for corporate leave reque
 
 ## ⚡ Key System Capabilities
 
-* 🔄 **Automated Annual Leave Reset Engine:** Background worker execution (`AnnualLeaveResetBackgroundService`) that automatically recalculates and resets annual leave balances across organizations based on configurable `DefaultAnnualLeaveDays`, complete with audit tracking.
-* 🔔 **Real-Time SignalR Push Notifications:** Instant WebSockets event dispatches notifying employees, managers, and handover peers on submission, approval, rejection, and coverage assignments.
-* 📅 **Smart Business Day Engine & Public Holidays:** Dynamic working-day calculation engine that excludes weekends and organization-specific public holidays (`/api/PublicHolidays`) when deducting leave balances.
-* 🤝 **Colleague Handover Workflow:** Enforces department-level coverage by allowing employees to select verified department peers as handover contacts during leave submission.
-* 🩺 **Automated Health Monitoring:** Built-in EF Core liveness probing (`/health`) that continuously checks application state and PostgreSQL connectivity to guarantee zero-downtime deployments on Render.
 * 🔒 **Request Idempotency:** Safe replay handling for mutating HTTP calls (`POST`, `PUT`, `DELETE`) via the `X-Idempotency-Key` request header to prevent duplicate submissions on network retries or rapid UI double-clicks.
 * 📜 **Automated Audit Trail:** System-wide Entity Framework Core `SaveChangesAsync` interceptor that records JSON diffs (`Old` vs `New` values) across insertions, updates, and deletions into an `AuditLogs` dataset.
+* 🤝 **Verified Handover Workflow:** Blocks leave submission unless the employee names a covering colleague, cross-checked against that department's roster.
+* 📅 **Smart Business Day Engine & Public Holidays:** Dynamic working-day calculation engine that excludes weekends and organization-specific public holidays (`/api/PublicHolidays`) when deducting leave balances.
+* 🔄 **Automated Annual Leave Reset Engine:** Background worker execution (`AnnualLeaveResetBackgroundService`) that automatically recalculates and resets annual leave balances across organizations based on configurable `DefaultAnnualLeaveDays`, complete with audit tracking.
+* 🔔 **Real-Time SignalR Push Notifications:** Instant WebSockets event dispatches notifying employees, managers, and handover peers on submission, approval, rejection, and coverage assignments.
 * 🛑 **Global Exception Handling & Tracing:** Unified API exception middleware that standardizes 4xx/5xx payloads with ASP.NET Core `TraceId` identifiers and handles `504 Gateway Timeout` cancellations cleanly.
+* 🩺 **Automated Health Monitoring:** Built-in EF Core liveness probing (`/health`) that continuously checks application state and PostgreSQL connectivity to guarantee zero-downtime deployments on Render.
 * 🛡️ **Rate Limiting & Security:** Partitioned fixed-window rate limiter (20 requests per 10s per IP) and thread-safe isolated background dispatches for emails and real-time alerts.
 
 ---
@@ -133,7 +133,7 @@ Configure the following key-value pairs in `appsettings.Development.json` or you
 
 ```bash
 # Clone the repository
-git clone [https://github.com/Dhorllar98/LeaveManagementSystem.git](https://github.com/Dhorllar98/LeaveManagementSystem.git)
+git clone https://github.com/Dhorllar98/LeaveManagementSystem.git
 
 # Navigate to project directory
 cd LeaveManagementSystem
