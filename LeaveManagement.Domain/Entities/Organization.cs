@@ -1,4 +1,6 @@
-﻿namespace LeaveManagement.Domain.Entities;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace LeaveManagement.Domain.Entities;
 
 public class Organization
 {
@@ -13,7 +15,10 @@ public class Organization
     public string CodePrefix { get; set; } = string.Empty;
     public int LastEmployeeNumber { get; set; } = 0;
 
-    public int DefaultAnnualLeaveDays { get; set; } = 20; // Default leave allocation for employees in this org
+    public int DefaultAnnualLeaveDays { get; set; } = 20; // Default leave balance for employees in this organization as test
+
+    [Timestamp]
+    public byte[]? RowVersion { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

@@ -8,5 +8,6 @@ public class ProvisionUserDto
     public string Designation { get; set; } = string.Empty;
     public Guid? DepartmentId { get; set; }
     public Guid? TeamLeadId { get; set; }
+    public DateOnly? DateOfBirth { get; set; }
     public string ResetPasswordUrl { get; set; } = "https://new-leave-management-system-qszg.vercel.app/reset-token";
 }

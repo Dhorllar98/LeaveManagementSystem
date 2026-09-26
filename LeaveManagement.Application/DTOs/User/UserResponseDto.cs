@@ -16,6 +16,7 @@ public class UserResponseDto
     public string? Designation { get; set; }
     public string Role { get; set; } = string.Empty;
     public int LeaveBalance { get; set; }
+    public DateOnly? DateOfBirth { get; set; }
     public DateTime CreatedAt { get; set; }
 
     // Detailed leave balance list per leave type

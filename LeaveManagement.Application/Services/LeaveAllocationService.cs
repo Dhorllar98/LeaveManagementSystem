@@ -125,33 +125,55 @@ public class LeaveAllocationService : ILeaveAllocationService
 
     public async Task<IEnumerable<UserLeaveBalanceDto>> GetUserLeaveBalancesAsync(Guid userId, Guid orgId, int period, CancellationToken cancellationToken = default)
     {
-        var leaveTypes = await _leaveTypeRepository.GetAllByOrganizationAsync(orgId, cancellationToken);
-        if (!leaveTypes.Any()) return Enumerable.Empty<UserLeaveBalanceDto>();
+        var balancesGrouped = await GetUsersLeaveBalancesAsync(new[] { userId }, orgId, period, cancellationToken);
+        return balancesGrouped.TryGetValue(userId, out var list) ? list : Enumerable.Empty<UserLeaveBalanceDto>();
+    }
 
-        var userAllocations = await _repository.GetAllByOrganizationAsync(orgId, cancellationToken);
-        var filteredAllocations = userAllocations.Where(a => a.EmployeeId == userId && a.Period == period).ToList();
+    public async Task<IDictionary<Guid, List<UserLeaveBalanceDto>>> GetUsersLeaveBalancesAsync(
+        IEnumerable<Guid> userIds,
+        Guid orgId,
+        int period,
+        CancellationToken cancellationToken = default)
+    {
+        var userIdSet = userIds.ToHashSet();
+        var resultDict = userIdSet.ToDictionary(id => id, _ => new List<UserLeaveBalanceDto>());
 
-        var approvedRequests = await _leaveRequestRepository.GetAllByOrganizationAsync(orgId, cancellationToken);
-        var userApprovedRequests = approvedRequests.Where(r => r.EmployeeId == userId
-                                                           && r.Status == LeaveStatus.Approved
-                                                           && r.StartDate.Year == period).ToList();
+        if (userIdSet.Count == 0) return resultDict;
 
-        return leaveTypes.Select(lt =>
+        var leaveTypes = (await _leaveTypeRepository.GetAllByOrganizationAsync(orgId, cancellationToken)).ToList();
+        if (!leaveTypes.Any()) return resultDict;
+
+        var userAllocations = (await _repository.GetAllByOrganizationAsync(orgId, cancellationToken))
+            .Where(a => userIdSet.Contains(a.EmployeeId) && a.Period == period)
+            .ToList();
+
+        var approvedRequests = (await _leaveRequestRepository.GetAllByOrganizationAsync(orgId, cancellationToken))
+            .Where(r => userIdSet.Contains(r.EmployeeId)
+                        && r.Status == LeaveStatus.Approved
+                        && r.StartDate.Year == period)
+            .ToList();
+
+        foreach (var userId in userIdSet)
         {
-            var allocation = filteredAllocations.FirstOrDefault(a => a.LeaveTypeId == lt.Id);
-            int totalDays = allocation?.NumberOfDays ?? lt.DefaultDays;
+            var userAllocs = userAllocations.Where(a => a.EmployeeId == userId).ToList();
+            var userReqs = approvedRequests.Where(r => r.EmployeeId == userId).ToList();
 
-            int daysUsed = userApprovedRequests
-                .Where(r => r.LeaveTypeId == lt.Id)
-                .Sum(r => r.NumberOfDays);
-
-            return new UserLeaveBalanceDto
+            foreach (var lt in leaveTypes)
             {
-                LeaveTypeId = lt.Id,
-                LeaveTypeName = lt.Name,
-                TotalDays = totalDays,
-                DaysUsed = daysUsed
-            };
-        });
+                var alloc = userAllocs.FirstOrDefault(a => a.LeaveTypeId == lt.Id);
+                int totalDays = alloc?.NumberOfDays ?? lt.DefaultDays;
+                int daysUsed = userReqs.Where(r => r.LeaveTypeId == lt.Id).Sum(r => r.NumberOfDays);
+
+                resultDict[userId].Add(new UserLeaveBalanceDto
+                {
+                    LeaveTypeId = lt.Id,
+                    LeaveTypeName = lt.Name,
+                    TotalDays = totalDays,
+                    DaysUsed = daysUsed
+                });
+            }
+        }
+
+        return resultDict;
     }
 }

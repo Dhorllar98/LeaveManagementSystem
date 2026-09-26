@@ -76,6 +76,9 @@ public static class ServiceExtensions
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IUserService, UserService>();
 
+        // Public Holiday Service (HTTP Client registered for external sync capability)
+        services.AddHttpClient<IPublicHolidayService, PublicHolidayService>();
+
         // Annual Leave Reset Services
         services.AddScoped<ILeaveResetService, LeaveResetService>();
         services.AddHostedService<AnnualLeaveResetBackgroundService>();

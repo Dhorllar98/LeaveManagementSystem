@@ -1,5 +1,4 @@
 ﻿using LeaveManagement.Application.DTOs.User;
-using LeaveManagement.Application.DTOs.Users;
 using LeaveManagement.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -72,24 +71,14 @@ public class UsersController : BaseController
             return Unauthorized(new { message = "User identity invalid." });
         }
 
-        var (success, message, statusCode, data) = await _userService.ProvisionUserAsync(currentUserId, dto, cancellationToken);
+        var result = await _userService.ProvisionUserAsync(currentUserId, dto, cancellationToken);
 
-        if (!success)
+        if (!result.Success)
         {
-            return statusCode switch
-            {
-                401 => Unauthorized(new { message }),
-                404 => NotFound(new { message }),
-                _ => BadRequest(new { message })
-            };
+            return StatusCode(result.StatusCode, new { message = result.Message });
         }
 
-        return StatusCode(statusCode, new
-        {
-            success = true,
-            message,
-            data
-        });
+        return StatusCode(result.StatusCode, result);
     }
 
     [HttpPut("{id:guid}")]
@@ -97,23 +86,14 @@ public class UsersController : BaseController
     public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UpdateUserDto dto, CancellationToken cancellationToken)
     {
         var currentUserId = GetCurrentUserId();
-        var (success, message, statusCode, data) = await _userService.UpdateUserAsync(id, currentUserId, dto, cancellationToken);
+        var result = await _userService.UpdateUserAsync(id, currentUserId, dto, cancellationToken);
 
-        if (!success)
+        if (!result.Success)
         {
-            return statusCode switch
-            {
-                404 => NotFound(new { message }),
-                _ => BadRequest(new { message })
-            };
+            return StatusCode(result.StatusCode, new { message = result.Message });
         }
 
-        return StatusCode(statusCode, new
-        {
-            success = true,
-            message,
-            data
-        });
+        return StatusCode(result.StatusCode, result);
     }
 
     [HttpPost("bulk-upload")]
@@ -126,18 +106,13 @@ public class UsersController : BaseController
             return Unauthorized(new { message = "User identity invalid." });
         }
 
-        (bool success, string message, int statusCode, BulkUploadResultDto? data) =
-            await _userService.BulkUploadUsersAsync(currentUserId, file, cancellationToken);
+        var result = await _userService.BulkUploadUsersAsync(currentUserId, file, cancellationToken);
 
-        if (!success)
+        if (!result.Success)
         {
-            return statusCode switch
-            {
-                401 => Unauthorized(new { message }),
-                _ => BadRequest(new { message })
-            };
+            return StatusCode(result.StatusCode, new { message = result.Message });
         }
 
-        return StatusCode(statusCode, data);
+        return StatusCode(result.StatusCode, result.Data);
     }
 }
