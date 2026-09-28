@@ -1,14 +1,25 @@
-﻿using LeaveManagement.Application.Interfaces;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace LeaveManagement.Infrastructure.Data;
 
 public class AppDbContext : DbContext, IAppDbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    private readonly ICurrentUserService? _currentUserService;
+
+    public AppDbContext(
+        DbContextOptions<AppDbContext> options,
+        ICurrentUserService? currentUserService = null) : base(options)
     {
+        _currentUserService = currentUserService;
     }
 
     public DbSet<User> Users => Set<User>();
@@ -29,36 +40,35 @@ public class AppDbContext : DbContext, IAppDbContext
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        var auditEntries = OnBeforeSaveChanges();
-        var result = await base.SaveChangesAsync(cancellationToken);
-
-        if (auditEntries.Count > 0)
-        {
-            AuditLogs.AddRange(auditEntries);
-            await base.SaveChangesAsync(cancellationToken);
-        }
-
-        return result;
+        OnBeforeSaveChanges();
+        return await base.SaveChangesAsync(cancellationToken);
     }
 
-    private List<AuditLog> OnBeforeSaveChanges()
+    private void OnBeforeSaveChanges()
     {
         ChangeTracker.DetectChanges();
-        var auditEntries = new List<AuditLog>();
+        var auditLogs = new List<AuditLog>();
+        var currentUserId = _currentUserService?.UserId?.ToString();
+        var now = DateTime.UtcNow;
 
         foreach (var entry in ChangeTracker.Entries())
         {
             if (entry.Entity is AuditLog || entry.State == EntityState.Detached || entry.State == EntityState.Unchanged)
                 continue;
 
+            // Automatically manage entity audit timestamps
+            UpdateEntityAuditProperties(entry, now);
+
+            // Build structural change audit
             var auditLog = new AuditLog
             {
-                EntityName = entry.Entity.GetType().Name,
+                EntityName = entry.Metadata.ClrType.Name, // Proxy-safe class name
                 Action = entry.State.ToString(),
-                Timestamp = DateTime.UtcNow
+                Timestamp = now,
+                UserId = currentUserId
             };
 
-            var changes = new Dictionary<string, object>();
+            var changes = new Dictionary<string, object?>();
 
             foreach (var property in entry.Properties)
             {
@@ -68,14 +78,20 @@ public class AppDbContext : DbContext, IAppDbContext
                     continue;
                 }
 
+                // Skip concurrency tokens from change payloads
+                if (property.Metadata.IsConcurrencyToken)
+                    continue;
+
                 switch (entry.State)
                 {
                     case EntityState.Added:
-                        changes[property.Metadata.Name] = property.CurrentValue ?? "null";
+                        changes[property.Metadata.Name] = property.CurrentValue;
                         break;
+
                     case EntityState.Deleted:
-                        changes[property.Metadata.Name] = property.OriginalValue ?? "null";
+                        changes[property.Metadata.Name] = property.OriginalValue;
                         break;
+
                     case EntityState.Modified:
                         if (property.IsModified)
                         {
@@ -90,9 +106,29 @@ public class AppDbContext : DbContext, IAppDbContext
             }
 
             auditLog.Changes = JsonSerializer.Serialize(changes);
-            auditEntries.Add(auditLog);
+            auditLogs.Add(auditLog);
         }
 
-        return auditEntries;
+        if (auditLogs.Count > 0)
+        {
+            AuditLogs.AddRange(auditLogs);
+        }
+    }
+
+    private static void UpdateEntityAuditProperties(EntityEntry entry, DateTime now)
+    {
+        // Reflection/Property check for entities containing CreatedAt / UpdatedAt
+        var createdAtProp = entry.Property("CreatedAt");
+        var updatedAtProp = entry.Property("UpdatedAt");
+
+        if (entry.State == EntityState.Added && createdAtProp != null)
+        {
+            createdAtProp.CurrentValue = now;
+        }
+
+        if (entry.State == EntityState.Modified && updatedAtProp != null)
+        {
+            updatedAtProp.CurrentValue = now;
+        }
     }
 }

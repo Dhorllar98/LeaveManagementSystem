@@ -34,7 +34,8 @@ public class ProvisionUserRequestValidator : AbstractValidator<ProvisionUserDto>
 
         RuleFor(x => x.ResetPasswordUrl)
             .NotEmpty().WithMessage("Reset password URL is required.")
-            .Must(uri => Uri.TryCreate(uri, UriKind.Absolute, out _))
-            .WithMessage("Reset password URL must be a valid absolute HTTP/HTTPS URL.");
+            .Must(uri => Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
+                         && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps))
+            .WithMessage("Reset password URL must be a valid absolute HTTP or HTTPS URL.");
     }
 }

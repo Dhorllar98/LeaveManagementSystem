@@ -16,14 +16,29 @@ public class DepartmentConfiguration : IEntityTypeConfiguration<Department>
             .IsRequired()
             .HasMaxLength(100);
 
-        builder.Property(d => d.OrganizationId)
-            .IsRequired();
+        builder.Property(d => d.CreatedAt)
+            .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-        // Nullable foreign key: Departments start unassigned until HR explicitly assigns a team lead
+        // Enforce unique department names per organization
+        builder.HasIndex(d => new { d.OrganizationId, d.Name })
+            .IsUnique();
+
+        // Foreign Key: Organization -> Department (Cascade Delete)
+        builder.HasOne(d => d.Organization)
+            .WithMany()
+            .HasForeignKey(d => d.OrganizationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Foreign Key: TeamLead -> User (Restrict Delete to prevent cycles)
         builder.HasOne(d => d.TeamLead)
             .WithMany()
             .HasForeignKey(d => d.TeamLeadId)
-            .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Navigation: Department -> Employees (User.DepartmentId set to null on delete)
+        builder.HasMany(d => d.Employees)
+            .WithOne(u => u.Department)
+            .HasForeignKey(u => u.DepartmentId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

@@ -9,4 +9,5 @@ public interface IAuthService
     Task<ApiResponse<AuthResponseDto>> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default);
     Task<ApiResponse<AuthResponseDto>> LoginAsync(LoginRequestDto request, CancellationToken cancellationToken = default);
     Task<ApiResponse<AuthResponseDto>> RefreshTokenAsync(RefreshTokenRequestDto request, CancellationToken cancellationToken = default);
+    Task<ApiResponse<string>> ResetPasswordAsync(ResetPasswordDto request, CancellationToken cancellationToken = default);
 }

@@ -1,4 +1,6 @@
-﻿using FluentValidation;
+﻿using System.Text;
+using System.Text.Json.Serialization;
+using FluentValidation;
 using FluentValidation.AspNetCore;
 using LeaveManagement.Api.Services;
 using LeaveManagement.Application.Interfaces;
@@ -6,11 +8,10 @@ using LeaveManagement.Application.Services;
 using LeaveManagement.Application.Validators;
 using LeaveManagement.Infrastructure.Authentication;
 using LeaveManagement.Infrastructure.BackgroundServices;
+using LeaveManagement.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using System.Text;
-using System.Text.Json.Serialization;
 
 namespace LeaveManagement.Api.Extensions;
 
@@ -18,6 +19,9 @@ public static class ServiceExtensions
 {
     public static IServiceCollection AddPresentationServices(this IServiceCollection services, IConfiguration configuration)
     {
+        // 1. Register HTTP Context Accessor for reading current request/user claims
+        services.AddHttpContextAccessor();
+
         services.AddControllers()
             .AddJsonOptions(options =>
             {
@@ -25,7 +29,7 @@ public static class ServiceExtensions
                 options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
             });
 
-        // 1. Register SignalR & Notification Service
+        // 2. Register SignalR & Notification Service
         services.AddSignalR();
         services.AddScoped<IRealtimeNotificationService, SignalRNotificationService>();
 
@@ -62,6 +66,9 @@ public static class ServiceExtensions
 
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
+        // User Context Service (for DbContext Auditing)
+        services.AddScoped<ICurrentUserService, CurrentUserService>();
+
         // Authentication & Tokens
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -125,7 +132,7 @@ public static class ServiceExtensions
 
                 options.Events = new JwtBearerEvents
                 {
-                    // 2. Extract token from URL query string for WebSockets/SignalR
+                    // Extract token from URL query string for WebSockets/SignalR
                     OnMessageReceived = context =>
                     {
                         var accessToken = context.Request.Query["access_token"];

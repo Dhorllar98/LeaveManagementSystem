@@ -279,4 +279,35 @@ public class AuthService : IAuthService
             Expiration = DateTime.UtcNow.AddMinutes(30)
         }, "Token refreshed successfully.");
     }
+
+    public async Task<ApiResponse<string>> ResetPasswordAsync(ResetPasswordDto request, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) ||
+            string.IsNullOrWhiteSpace(request.Token) ||
+            string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            throw new Domain.Exceptions.ValidationException("Email, token, and new password are required.");
+        }
+
+        var user = await _userRepository.GetByEmailAsync(request.Email.Trim(), cancellationToken);
+
+        if (user == null || user.PasswordResetToken != request.Token)
+        {
+            throw new Domain.Exceptions.ValidationException("Invalid password reset token or email address.");
+        }
+
+        if (user.ResetTokenExpiresAt == null || user.ResetTokenExpiresAt <= DateTime.UtcNow)
+        {
+            throw new Domain.Exceptions.ValidationException("Password reset token has expired. Please request a new one.");
+        }
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        user.PasswordResetToken = null;
+        user.ResetTokenExpiresAt = null;
+
+        _userRepository.Update(user);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return ApiResponse<string>.SuccessResponse("Password reset successful.", "Password has been reset successfully. You can now log in.");
+    }
 }

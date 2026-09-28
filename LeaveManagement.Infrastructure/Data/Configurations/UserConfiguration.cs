@@ -21,8 +21,17 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .IsRequired()
             .HasMaxLength(150);
 
-        builder.HasIndex(u => u.Email)
-            .IsUnique();
+        builder.Property(u => u.Designation)
+            .HasMaxLength(100);
+
+        builder.Property(u => u.EmployeeCode)
+            .HasMaxLength(50);
+
+        builder.Property(u => u.PasswordResetToken)
+            .HasMaxLength(128);
+
+        builder.Property(u => u.RefreshToken)
+            .HasMaxLength(256);
 
         builder.Property(u => u.PasswordHash)
             .IsRequired();
@@ -34,7 +43,20 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.LeaveBalance)
             .HasDefaultValue(20);
 
+        // Tenant-scoped unique indexes
+        builder.HasIndex(u => new { u.OrganizationId, u.Email })
+            .IsUnique();
 
+        builder.HasIndex(u => new { u.OrganizationId, u.EmployeeCode })
+            .IsUnique();
+
+        // Organization Navigation (EXPLICIT MAPPING FIXED HERE)
+        builder.HasOne(u => u.Organization)
+            .WithMany(o => o.Users)
+            .HasForeignKey(u => u.OrganizationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Relationships
         builder.HasMany(u => u.LeaveRequests)
             .WithOne(l => l.Employee)
             .HasForeignKey(l => l.EmployeeId)
