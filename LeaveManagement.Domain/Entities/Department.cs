@@ -1,4 +1,5 @@
-﻿using LeaveManagement.Domain.Entities;
+﻿using System;
+using System.Collections.Generic;
 
 namespace LeaveManagement.Domain.Entities;
 
@@ -14,8 +15,10 @@ public class Department
     public Guid? TeamLeadId { get; set; }
     public User? TeamLead { get; set; }
 
-    public ICollection<User>? Employees { get; set; }
+    // Initialized to prevent null reference issues
+    public ICollection<User> Employees { get; set; } = new List<User>();
 
-    public DateTime CreatedAt { get; set; }
+    // Audit Properties
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

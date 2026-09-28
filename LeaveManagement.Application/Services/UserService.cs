@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Data;
+using System.Globalization;
 using ClosedXML.Excel;
 using LeaveManagement.Application.Common.Models;
 using LeaveManagement.Application.DTOs.LeaveAllocation;
@@ -8,6 +9,8 @@ using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace LeaveManagement.Application.Services;
@@ -18,17 +21,36 @@ public class UserService : IUserService
     private readonly IEmailService _emailService;
     private readonly ILeaveAllocationService _leaveAllocationService;
     private readonly ILogger<UserService> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IConfiguration _configuration;
 
     public UserService(
         IAppDbContext context,
         IEmailService emailService,
         ILeaveAllocationService leaveAllocationService,
-        ILogger<UserService> logger)
+        ILogger<UserService> logger,
+        IServiceScopeFactory scopeFactory,
+        IConfiguration configuration)
     {
         _context = context;
         _emailService = emailService;
         _leaveAllocationService = leaveAllocationService;
         _logger = logger;
+        _scopeFactory = scopeFactory;
+        _configuration = configuration;
+    }
+
+    private string GetResetPasswordBaseUrl(string? dtoUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(dtoUrl))
+        {
+            return dtoUrl.TrimEnd('/');
+        }
+
+        var configUrl = _configuration["AppSettings:FrontendResetPasswordUrl"];
+        return !string.IsNullOrWhiteSpace(configUrl)
+            ? configUrl.TrimEnd('/')
+            : "https://new-leave-management-system-qszg.vercel.app/reset-password";
     }
 
     private async Task<Guid?> GetOrganizationIdAsync(Guid userId, CancellationToken cancellationToken)
@@ -86,7 +108,7 @@ public class UserService : IUserService
                 FullName = u.FullName,
                 Email = u.Email,
                 EmployeeCode = u.EmployeeCode,
-                OrganizationId = u.OrganizationId,
+                OrganizationId = u.OrganizationId ?? Guid.Empty,
                 DepartmentId = u.DepartmentId,
                 DepartmentName = u.Department != null ? u.Department.Name : null,
                 TeamLeadId = u.TeamLeadId,
@@ -94,6 +116,7 @@ public class UserService : IUserService
                 Designation = u.Designation,
                 Role = u.Role.ToString(),
                 LeaveBalance = u.LeaveBalance,
+                DateOfBirth = u.DateOfBirth.HasValue ? DateOnly.FromDateTime(u.DateOfBirth.Value) : null,
                 CreatedAt = u.CreatedAt
             })
             .ToListAsync(cancellationToken);
@@ -101,7 +124,6 @@ public class UserService : IUserService
         int currentYear = DateTime.UtcNow.Year;
         var userIds = users.Select(u => u.Id).ToList();
 
-        // Batch fetch balances to eliminate N+1 database calls
         var balancesGrouped = await _leaveAllocationService.GetUsersLeaveBalancesAsync(
             userIds, orgId.Value, currentYear, cancellationToken);
 
@@ -137,8 +159,8 @@ public class UserService : IUserService
 
         return await _context.Users
             .AsNoTracking()
-            .Where(u => u.OrganizationId == currentUser.OrganizationId.Value &&
-                        u.DepartmentId == currentUser.DepartmentId.Value &&
+            .Where(u => u.OrganizationId == currentUser.OrganizationId &&
+                        u.DepartmentId == currentUser.DepartmentId &&
                         u.Id != currentUserId)
             .Select(u => new UserResponseDto
             {
@@ -146,7 +168,7 @@ public class UserService : IUserService
                 FullName = u.FullName,
                 Email = u.Email,
                 EmployeeCode = u.EmployeeCode,
-                OrganizationId = u.OrganizationId,
+                OrganizationId = u.OrganizationId ?? Guid.Empty,
                 DepartmentId = u.DepartmentId,
                 DepartmentName = u.Department != null ? u.Department.Name : null,
                 TeamLeadId = u.TeamLeadId,
@@ -154,6 +176,7 @@ public class UserService : IUserService
                 Designation = u.Designation,
                 Role = u.Role.ToString(),
                 LeaveBalance = u.LeaveBalance,
+                DateOfBirth = u.DateOfBirth.HasValue ? DateOnly.FromDateTime(u.DateOfBirth.Value) : null,
                 CreatedAt = u.CreatedAt
             })
             .ToListAsync(cancellationToken);
@@ -173,7 +196,7 @@ public class UserService : IUserService
                 FullName = u.FullName,
                 Email = u.Email,
                 EmployeeCode = u.EmployeeCode,
-                OrganizationId = u.OrganizationId,
+                OrganizationId = u.OrganizationId ?? Guid.Empty,
                 DepartmentId = u.DepartmentId,
                 DepartmentName = u.Department != null ? u.Department.Name : null,
                 TeamLeadId = u.TeamLeadId,
@@ -181,6 +204,7 @@ public class UserService : IUserService
                 Designation = u.Designation,
                 Role = u.Role.ToString(),
                 LeaveBalance = u.LeaveBalance,
+                DateOfBirth = u.DateOfBirth.HasValue ? DateOnly.FromDateTime(u.DateOfBirth.Value) : null,
                 CreatedAt = u.CreatedAt
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -213,99 +237,140 @@ public class UserService : IUserService
             return ApiResponse<UserResponseDto>.FailureResponse("HR account is not linked to any organization.", 400);
         }
 
-        var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
-        if (org == null)
-        {
-            return ApiResponse<UserResponseDto>.FailureResponse("Organization not found.", 400);
-        }
-
         var emailExists = await _context.Users
             .AsNoTracking()
-            .AnyAsync(u => u.OrganizationId == org.Id && u.Email.ToLower() == dto.Email.ToLower(), cancellationToken);
+            .AnyAsync(u => u.OrganizationId == hrUser.OrganizationId && u.Email.ToLower() == dto.Email.ToLower(), cancellationToken);
 
         if (emailExists)
         {
             return ApiResponse<UserResponseDto>.FailureResponse($"Email '{dto.Email}' already exists in your organization.", 400);
         }
 
-        if (dto.DepartmentId.HasValue && !await _context.Departments.AnyAsync(d => d.Id == dto.DepartmentId.Value && d.OrganizationId == org.Id, cancellationToken))
+        if (dto.DepartmentId.HasValue && !await _context.Departments.AnyAsync(d => d.Id == dto.DepartmentId.Value && d.OrganizationId == hrUser.OrganizationId, cancellationToken))
         {
             return ApiResponse<UserResponseDto>.FailureResponse("Selected department does not exist in your organization.", 400);
         }
 
-        if (dto.TeamLeadId.HasValue && !await _context.Users.AnyAsync(u => u.Id == dto.TeamLeadId.Value && u.OrganizationId == org.Id, cancellationToken))
+        if (dto.TeamLeadId.HasValue && !await _context.Users.AnyAsync(u => u.Id == dto.TeamLeadId.Value && u.OrganizationId == hrUser.OrganizationId, cancellationToken))
         {
             return ApiResponse<UserResponseDto>.FailureResponse("Selected team lead does not exist in your organization.", 400);
         }
 
-        org.LastEmployeeNumber++;
-        string formattedCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
-        string tempPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
-        string resetToken = Guid.NewGuid().ToString("N");
-
-        Enum.TryParse<UserRole>(dto.Role, true, out var userRole);
-
-        var newUser = new User
+        if (!string.IsNullOrWhiteSpace(dto.Role) && !Enum.TryParse<UserRole>(dto.Role, true, out _))
         {
-            Id = Guid.NewGuid(),
-            FullName = dto.FullName.Trim(),
-            Email = dto.Email.Trim(),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword),
-            Role = userRole,
-            Designation = string.IsNullOrWhiteSpace(dto.Designation) ? "Employee" : dto.Designation.Trim(),
-            DepartmentId = dto.DepartmentId,
-            TeamLeadId = dto.TeamLeadId,
-            OrganizationId = org.Id,
-            EmployeeCode = formattedCode,
-            LeaveBalance = 20,
-            PasswordResetToken = resetToken,
-            ResetTokenExpiresAt = DateTime.UtcNow.AddHours(24),
-            CreatedAt = DateTime.UtcNow
-        };
+            return ApiResponse<UserResponseDto>.FailureResponse($"Invalid role '{dto.Role}' specified.", 400);
+        }
 
-        await _context.Users.AddAsync(newUser, cancellationToken);
+        User newUser;
+        string tempPassword;
+        string resetToken;
 
-        var leaveTypes = await _context.LeaveTypes
-            .Where(lt => lt.OrganizationId == org.Id)
-            .ToListAsync(cancellationToken);
+        var strategy = _context.Database.CreateExecutionStrategy();
 
-        int currentYear = DateTime.UtcNow.Year;
-        foreach (var lt in leaveTypes)
+        var result = await strategy.ExecuteAsync(async () =>
         {
-            await _context.LeaveAllocations.AddAsync(new LeaveAllocation
+            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+            var org = await _context.Organizations
+                .FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
+
+            if (org == null)
+            {
+                throw new InvalidOperationException("Organization not found.");
+            }
+
+            org.LastEmployeeNumber++;
+            string formattedCode = string.IsNullOrWhiteSpace(dto.EmployeeCode)
+                ? $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}"
+                : dto.EmployeeCode.Trim();
+
+            if (!string.IsNullOrWhiteSpace(dto.EmployeeCode))
+            {
+                bool codeExists = await _context.Users
+                    .AnyAsync(u => u.OrganizationId == org.Id && u.EmployeeCode == formattedCode, cancellationToken);
+
+                if (codeExists)
+                {
+                    throw new InvalidOperationException($"Employee code '{formattedCode}' is already in use.");
+                }
+            }
+
+            Enum.TryParse<UserRole>(dto.Role, true, out var userRole);
+
+            tempPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
+            resetToken = Guid.NewGuid().ToString("N");
+
+            newUser = new User
+            {
+                Id = Guid.NewGuid(),
+                FullName = dto.FullName.Trim(),
+                Email = dto.Email.Trim(),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword),
+                Role = userRole,
+                Designation = string.IsNullOrWhiteSpace(dto.Designation) ? "Employee" : dto.Designation.Trim(),
+                DepartmentId = dto.DepartmentId,
+                TeamLeadId = dto.TeamLeadId,
+                OrganizationId = org.Id,
+                EmployeeCode = formattedCode,
+                LeaveBalance = 20,
+                DateOfBirth = dto.DateOfBirth.HasValue ? dto.DateOfBirth.Value.ToDateTime(TimeOnly.MinValue) : null,
+                PasswordResetToken = resetToken,
+                ResetTokenExpiresAt = DateTime.UtcNow.AddHours(24),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _context.Users.AddAsync(newUser, cancellationToken);
+
+            var leaveTypes = await _context.LeaveTypes
+                .Where(lt => lt.OrganizationId == org.Id)
+                .ToListAsync(cancellationToken);
+
+            int currentYear = DateTime.UtcNow.Year;
+            var allocations = leaveTypes.Select(lt => new LeaveAllocation
             {
                 Id = Guid.NewGuid(),
                 EmployeeId = newUser.Id,
                 LeaveTypeId = lt.Id,
                 NumberOfDays = lt.DefaultDays,
                 Period = currentYear
-            }, cancellationToken);
-        }
+            });
 
-        await _context.SaveChangesAsync(cancellationToken);
+            await _context.LeaveAllocations.AddRangeAsync(allocations, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return (newUser, tempPassword, resetToken);
+        });
+
+        newUser = result.newUser;
+        tempPassword = result.tempPassword;
+        resetToken = result.resetToken;
+
+        string baseUrl = GetResetPasswordBaseUrl(dto.ResetPasswordUrl);
+        string resetLink = $"{baseUrl}?token={resetToken}&email={Uri.EscapeDataString(newUser.Email)}";
+        string emailBody = $"Welcome to LeaveFlow, {dto.FullName}! Use code {newUser.EmployeeCode} and temp password: {tempPassword}. Reset here: {resetLink}";
+        string recipientEmail = dto.Email.Trim();
 
         _ = Task.Run(async () =>
         {
+            using var scope = _scopeFactory.CreateScope();
+            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<UserService>>();
+
             try
             {
-                string baseUrl = string.IsNullOrWhiteSpace(dto.ResetPasswordUrl)
-                    ? "https://new-leave-management-system-qszg.vercel.app/reset-password"
-                    : dto.ResetPasswordUrl.TrimEnd('/');
-
-                string resetLink = $"{baseUrl}?token={resetToken}&email={Uri.EscapeDataString(newUser.Email)}";
-                string emailBody = $"Welcome to LeaveFlow, {dto.FullName}! Use code {formattedCode} and temp password: {tempPassword}. Reset here: {resetLink}";
-
-                await _emailService.SendEmailAsync(dto.Email, "Welcome to LeaveFlow", emailBody);
+                await emailService.SendEmailAsync(recipientEmail, "Welcome to LeaveFlow", emailBody);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send welcome email to {Email}", newUser.Email);
+                logger.LogError(ex, "Failed to send welcome email to {Email}", recipientEmail);
             }
         });
 
         var responseDto = new UserResponseDto
         {
             Id = newUser.Id,
+            OrganizationId = newUser.OrganizationId ?? Guid.Empty,
             FullName = newUser.FullName,
             Email = newUser.Email,
             EmployeeCode = newUser.EmployeeCode,
@@ -313,7 +378,9 @@ public class UserService : IUserService
             TeamLeadId = newUser.TeamLeadId,
             Designation = newUser.Designation,
             Role = newUser.Role.ToString(),
-            LeaveBalance = newUser.LeaveBalance
+            LeaveBalance = newUser.LeaveBalance,
+            DateOfBirth = newUser.DateOfBirth.HasValue ? DateOnly.FromDateTime(newUser.DateOfBirth.Value) : null,
+            CreatedAt = newUser.CreatedAt
         };
 
         return ApiResponse<UserResponseDto>.SuccessResponse(responseDto, "User provisioned successfully.", 201);
@@ -352,20 +419,40 @@ public class UserService : IUserService
             user.TeamLeadId = dto.TeamLeadId;
         }
 
+        if (!string.IsNullOrWhiteSpace(dto.EmployeeCode) && dto.EmployeeCode != user.EmployeeCode)
+        {
+            bool codeExists = await _context.Users.AnyAsync(u => u.OrganizationId == orgId && u.EmployeeCode == dto.EmployeeCode.Trim() && u.Id != id, cancellationToken);
+            if (codeExists)
+            {
+                return ApiResponse<UserResponseDto>.FailureResponse($"Employee code '{dto.EmployeeCode}' is already assigned to another user.", 400);
+            }
+            user.EmployeeCode = dto.EmployeeCode.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.Role))
+        {
+            if (Enum.TryParse<UserRole>(dto.Role, true, out var parsedRole))
+            {
+                user.Role = parsedRole;
+            }
+            else
+            {
+                return ApiResponse<UserResponseDto>.FailureResponse($"Invalid role '{dto.Role}' specified.", 400);
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName.Trim();
         if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email.Trim();
         if (!string.IsNullOrWhiteSpace(dto.Designation)) user.Designation = dto.Designation.Trim();
         if (dto.LeaveBalance.HasValue) user.LeaveBalance = Math.Max(0, dto.LeaveBalance.Value);
-        if (!string.IsNullOrWhiteSpace(dto.Role) && Enum.TryParse<UserRole>(dto.Role, true, out var parsedRole))
-        {
-            user.Role = parsedRole;
-        }
+        if (dto.DateOfBirth.HasValue) user.DateOfBirth = dto.DateOfBirth.Value.ToDateTime(TimeOnly.MinValue);
 
         await _context.SaveChangesAsync(cancellationToken);
 
         var responseDto = new UserResponseDto
         {
             Id = user.Id,
+            OrganizationId = user.OrganizationId ?? Guid.Empty,
             FullName = user.FullName,
             Email = user.Email,
             EmployeeCode = user.EmployeeCode,
@@ -373,7 +460,9 @@ public class UserService : IUserService
             TeamLeadId = user.TeamLeadId,
             Designation = user.Designation,
             Role = user.Role.ToString(),
-            LeaveBalance = user.LeaveBalance
+            LeaveBalance = user.LeaveBalance,
+            DateOfBirth = user.DateOfBirth.HasValue ? DateOnly.FromDateTime(user.DateOfBirth.Value) : null,
+            CreatedAt = user.CreatedAt
         };
 
         return ApiResponse<UserResponseDto>.SuccessResponse(responseDto, "Employee updated successfully.", 200);
@@ -394,18 +483,14 @@ public class UserService : IUserService
         if (hrUser?.OrganizationId == null)
             return ApiResponse<BulkUploadResultDto>.FailureResponse("HR account is not linked to any organization.", 400);
 
-        var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
-        if (org == null)
-            return ApiResponse<BulkUploadResultDto>.FailureResponse("Organization not found.", 400);
+        var orgId = hrUser.OrganizationId.Value;
 
-        var departments = await _context.Departments.AsNoTracking().Where(d => d.OrganizationId == org.Id).ToListAsync(cancellationToken);
-        var leaveTypes = await _context.LeaveTypes.AsNoTracking().Where(lt => lt.OrganizationId == org.Id).ToListAsync(cancellationToken);
-        var existingEmails = await _context.Users.AsNoTracking().Where(u => u.OrganizationId == org.Id).Select(u => u.Email.ToLower()).ToListAsync(cancellationToken);
+        var departments = await _context.Departments.AsNoTracking().Where(d => d.OrganizationId == orgId).ToListAsync(cancellationToken);
+        var leaveTypes = await _context.LeaveTypes.AsNoTracking().Where(lt => lt.OrganizationId == orgId).ToListAsync(cancellationToken);
+        var existingEmails = await _context.Users.AsNoTracking().Where(u => u.OrganizationId == orgId).Select(u => u.Email.ToLower()).ToListAsync(cancellationToken);
 
         var emailHashSet = new HashSet<string>(existingEmails);
-        var createdUsers = new List<User>();
         var errors = new List<string>();
-        int currentYear = DateTime.UtcNow.Year;
         int totalRows = 0;
 
         using var stream = file.OpenReadStream();
@@ -415,7 +500,8 @@ public class UserService : IUserService
         if (worksheet == null)
             return ApiResponse<BulkUploadResultDto>.FailureResponse("The uploaded Excel file contains no worksheets.", 400);
 
-        var rows = worksheet.RowsUsed().Skip(1); // Skip header row
+        var rows = worksheet.RowsUsed().Skip(1);
+        var parsedItems = new List<(string FullName, string Email, UserRole Role, string Designation, Guid? DeptId, DateOnly? Dob)>();
 
         foreach (var row in rows)
         {
@@ -427,6 +513,20 @@ public class UserService : IUserService
             string roleStr = row.Cell(3).GetValue<string>()?.Trim() ?? string.Empty;
             string designation = row.Cell(4).GetValue<string>()?.Trim() ?? string.Empty;
             string deptName = row.Cell(5).GetValue<string>()?.Trim() ?? string.Empty;
+
+            DateOnly? dob = null;
+            var dobCell = row.Cell(6);
+            if (!dobCell.IsEmpty())
+            {
+                if (dobCell.DataType == XLDataType.DateTime)
+                {
+                    dob = DateOnly.FromDateTime(dobCell.GetDateTime());
+                }
+                else if (DateOnly.TryParse(dobCell.GetValue<string>(), CultureInfo.InvariantCulture, out var parsedDob))
+                {
+                    dob = parsedDob;
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email))
             {
@@ -444,58 +544,127 @@ public class UserService : IUserService
                 ? null
                 : departments.FirstOrDefault(d => d.Name.Equals(deptName, StringComparison.OrdinalIgnoreCase))?.Id;
 
-            org.LastEmployeeNumber++;
-            string formattedCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
-            string tempPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
-
             if (!Enum.TryParse<UserRole>(roleStr, true, out var userRole))
             {
                 userRole = UserRole.Employee;
             }
 
-            var newUser = new User
+            emailHashSet.Add(email.ToLower());
+            parsedItems.Add((fullName, email, userRole, string.IsNullOrWhiteSpace(designation) ? "Employee" : designation, deptId, dob));
+        }
+
+        if (parsedItems.Count == 0)
+        {
+            return ApiResponse<BulkUploadResultDto>.SuccessResponse(new BulkUploadResultDto
+            {
+                Success = false,
+                Message = "No valid records were found to process.",
+                TotalProcessed = totalRows,
+                SuccessfullyCreated = 0,
+                Errors = errors
+            }, "Bulk upload completed with zero insertions.", 200);
+        }
+
+        var preparedUsers = new System.Collections.Concurrent.ConcurrentBag<(User User, string TempPassword, string ResetToken)>();
+
+        // Parallelizing CPU-intensive BCrypt Hashing
+        Parallel.ForEach(parsedItems, item =>
+        {
+            string tempPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
+            string resetToken = Guid.NewGuid().ToString("N");
+            string passwordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword);
+
+            var user = new User
             {
                 Id = Guid.NewGuid(),
-                FullName = fullName,
-                Email = email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword),
-                Role = userRole,
-                Designation = string.IsNullOrWhiteSpace(designation) ? "Employee" : designation,
-                DepartmentId = deptId,
-                OrganizationId = org.Id,
-                EmployeeCode = formattedCode,
+                FullName = item.FullName,
+                Email = item.Email,
+                PasswordHash = passwordHash,
+                Role = item.Role,
+                Designation = item.Designation,
+                DepartmentId = item.DeptId,
+                OrganizationId = orgId,
                 LeaveBalance = 20,
+                DateOfBirth = item.Dob.HasValue ? item.Dob.Value.ToDateTime(TimeOnly.MinValue) : null,
+                PasswordResetToken = resetToken,
+                ResetTokenExpiresAt = DateTime.UtcNow.AddHours(24),
                 CreatedAt = DateTime.UtcNow
             };
 
-            await _context.Users.AddAsync(newUser, cancellationToken);
-            createdUsers.Add(newUser);
-            emailHashSet.Add(email.ToLower());
+            preparedUsers.Add((user, tempPassword, resetToken));
+        });
 
-            foreach (var lt in leaveTypes)
-            {
-                await _context.LeaveAllocations.AddAsync(new LeaveAllocation
-                {
-                    Id = Guid.NewGuid(),
-                    EmployeeId = newUser.Id,
-                    LeaveTypeId = lt.Id,
-                    NumberOfDays = lt.DefaultDays,
-                    Period = currentYear
-                }, cancellationToken);
-            }
-        }
+        var createdUsersList = preparedUsers.ToList();
+        int currentYear = DateTime.UtcNow.Year;
 
-        if (createdUsers.Count > 0)
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
+            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+            var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+            if (org == null) throw new InvalidOperationException("Organization not found.");
+
+            var newUsers = new List<User>();
+            var newAllocations = new List<LeaveAllocation>();
+
+            foreach (var item in createdUsersList)
+            {
+                org.LastEmployeeNumber++;
+                item.User.EmployeeCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
+                newUsers.Add(item.User);
+
+                foreach (var lt in leaveTypes)
+                {
+                    newAllocations.Add(new LeaveAllocation
+                    {
+                        Id = Guid.NewGuid(),
+                        EmployeeId = item.User.Id,
+                        LeaveTypeId = lt.Id,
+                        NumberOfDays = lt.DefaultDays,
+                        Period = currentYear
+                    });
+                }
+            }
+
+            await _context.Users.AddRangeAsync(newUsers, cancellationToken);
+            await _context.LeaveAllocations.AddRangeAsync(newAllocations, cancellationToken);
+
             await _context.SaveChangesAsync(cancellationToken);
-        }
+            await transaction.CommitAsync(cancellationToken);
+        });
+
+        string baseUrl = GetResetPasswordBaseUrl(null);
+        var usersToSend = createdUsersList.ToList();
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<UserService>>();
+
+            foreach (var item in usersToSend)
+            {
+                try
+                {
+                    string resetLink = $"{baseUrl}?token={item.ResetToken}&email={Uri.EscapeDataString(item.User.Email)}";
+                    string emailBody = $"Welcome to LeaveFlow, {item.User.FullName}! Use code {item.User.EmployeeCode} and temp password: {item.TempPassword}. Reset here: {resetLink}";
+
+                    await emailService.SendEmailAsync(item.User.Email, "Welcome to LeaveFlow", emailBody);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to send bulk welcome email to {Email}", item.User.Email);
+                }
+            }
+        });
 
         var resultData = new BulkUploadResultDto
         {
             Success = errors.Count == 0,
-            Message = $"Bulk upload completed. {createdUsers.Count} employee(s) created.",
+            Message = $"Bulk upload completed. {createdUsersList.Count} employee(s) created.",
             TotalProcessed = totalRows,
-            SuccessfullyCreated = createdUsers.Count,
+            SuccessfullyCreated = createdUsersList.Count,
             Errors = errors
         };
 

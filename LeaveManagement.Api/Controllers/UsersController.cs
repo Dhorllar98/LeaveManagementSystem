@@ -115,4 +115,38 @@ public class UsersController : BaseController
 
         return StatusCode(result.StatusCode, result.Data);
     }
+
+    [HttpGet("bulk-upload/template")]
+    [Authorize(Roles = "HR")]
+    public IActionResult DownloadBulkUploadTemplate()
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Employees");
+
+        worksheet.Cell(1, 1).Value = "FullName";
+        worksheet.Cell(1, 2).Value = "Email";
+        worksheet.Cell(1, 3).Value = "Role";
+        worksheet.Cell(1, 4).Value = "Designation";
+        worksheet.Cell(1, 5).Value = "DepartmentName";
+        worksheet.Cell(1, 6).Value = "DateOfBirth";
+
+        var headerRow = worksheet.Row(1);
+        headerRow.Style.Font.Bold = true;
+        headerRow.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+
+        worksheet.Cell(2, 1).Value = "Jane Doe";
+        worksheet.Cell(2, 2).Value = "jane.doe@company.com";
+        worksheet.Cell(2, 3).Value = "Employee";
+        worksheet.Cell(2, 4).Value = "Software Engineer";
+        worksheet.Cell(2, 5).Value = "Engineering";
+        worksheet.Cell(2, 6).Value = "1995-08-15";
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+
+        return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Employee_Bulk_Upload_Template.xlsx");
+    }
 }

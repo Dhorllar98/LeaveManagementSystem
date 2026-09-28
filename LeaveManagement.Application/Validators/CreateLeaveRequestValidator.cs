@@ -13,11 +13,13 @@ public class CreateLeaveRequestValidator : AbstractValidator<CreateLeaveRequestD
 
         RuleFor(x => x.StartDate)
             .NotEmpty().WithMessage("Start date is required.")
-            .GreaterThanOrEqualTo(DateTime.UtcNow.Date).WithMessage("Start date cannot be in the past.");
+            .GreaterThanOrEqualTo(x => DateTime.UtcNow.Date)
+            .WithMessage("Start date cannot be in the past.");
 
         RuleFor(x => x.EndDate)
             .NotEmpty().WithMessage("End date is required.")
-            .GreaterThanOrEqualTo(x => x.StartDate).WithMessage("End date must be on or after start date.");
+            .GreaterThanOrEqualTo(x => x.StartDate)
+            .WithMessage("End date must be on or after start date.");
 
         RuleFor(x => x)
             .Must(x => DateHelper.CalculateBusinessDays(x.StartDate, x.EndDate) > 0)

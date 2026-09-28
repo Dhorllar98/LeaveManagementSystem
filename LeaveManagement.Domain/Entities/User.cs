@@ -1,4 +1,6 @@
-﻿using LeaveManagement.Domain.Enums;
+﻿using System;
+using System.Collections.Generic;
+using LeaveManagement.Domain.Enums;
 
 namespace LeaveManagement.Domain.Entities;
 
@@ -15,8 +17,9 @@ public class User
     public string PasswordHash { get; set; } = string.Empty;
     public UserRole Role { get; set; } = UserRole.Employee;
     public string? Designation { get; set; }
-    public int LeaveBalance { get; set; } = 20;
+    public DateTime? DateOfBirth { get; set; } // Added to support provisioning and DTO projections
 
+    public int LeaveBalance { get; set; } = 20;
     public int? LastLeaveResetYear { get; set; } // Tracks year of last annual renewal
 
     public string? RefreshToken { get; set; }

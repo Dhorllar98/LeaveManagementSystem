@@ -3,6 +3,7 @@ using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
 using LeaveManagement.Domain.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeaveManagement.Application.Services;
 
@@ -10,11 +11,16 @@ public class DepartmentService : IDepartmentService
 {
     private readonly IDepartmentRepository _departmentRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IAppDbContext _context;
 
-    public DepartmentService(IDepartmentRepository departmentRepository, IUserRepository userRepository)
+    public DepartmentService(
+        IDepartmentRepository departmentRepository,
+        IUserRepository userRepository,
+        IAppDbContext context)
     {
         _departmentRepository = departmentRepository;
         _userRepository = userRepository;
+        _context = context;
     }
 
     public async Task<DepartmentDto> CreateDepartmentAsync(CreateDepartmentDto dto, Guid organizationId)
@@ -26,7 +32,6 @@ public class DepartmentService : IDepartmentService
         }
 
         // Departments are ALWAYS created unassigned (TeamLeadId = null).
-        // HR must explicitly call AssignTeamLeadAsync to assign a Team Lead.
         var department = new Department
         {
             Id = Guid.NewGuid(),
@@ -45,63 +50,61 @@ public class DepartmentService : IDepartmentService
 
     public async Task<DepartmentDto> AssignTeamLeadAsync(AssignTeamLeadDto dto, Guid organizationId)
     {
-        var department = await _departmentRepository.GetByIdAsync(dto.DepartmentId)
-            ?? throw new KeyNotFoundException("Department not found.");
+        var strategy = _context.Database.CreateExecutionStrategy();
 
-        if (department.OrganizationId != organizationId)
+        return await strategy.ExecuteAsync(async () =>
         {
-            throw new UnauthorizedAccessException("You do not have permission to modify this department.");
-        }
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var department = await _departmentRepository.GetByIdAsync(dto.DepartmentId)
+                    ?? throw new KeyNotFoundException("Department not found.");
 
-        var teamLead = await _userRepository.GetByIdAsync(dto.TeamLeadId)
-            ?? throw new KeyNotFoundException("User not found.");
+                if (department.OrganizationId != organizationId)
+                {
+                    throw new UnauthorizedAccessException("You do not have permission to modify this department.");
+                }
 
-        if (teamLead.OrganizationId != organizationId)
-        {
-            throw new InvalidOperationException("Assigned user must belong to your organization.");
-        }
+                var teamLead = await _userRepository.GetByIdAsync(dto.TeamLeadId)
+                    ?? throw new KeyNotFoundException("User not found.");
 
-        // Explicit HR Assignment: Update department team lead and assign employee to department
-        department.TeamLeadId = dto.TeamLeadId;
-        department.UpdatedAt = DateTime.UtcNow;
+                if (teamLead.OrganizationId != organizationId)
+                {
+                    throw new InvalidOperationException("Assigned user must belong to your organization.");
+                }
 
-        teamLead.DepartmentId = dto.DepartmentId;
+                // Explicit HR Assignment: Update department team lead and assign employee to department
+                department.TeamLeadId = dto.TeamLeadId;
+                department.UpdatedAt = DateTime.UtcNow;
 
-        // Auto-promote role to TeamLead if not already set
-        if (teamLead.Role != UserRole.TeamLead)
-        {
-            teamLead.Role = UserRole.TeamLead;
-            await _userRepository.UpdateAsync(teamLead);
-        }
+                teamLead.DepartmentId = dto.DepartmentId;
 
-        await _departmentRepository.UpdateAsync(department);
-        await _departmentRepository.SaveChangesAsync();
+                // Auto-promote role to TeamLead if not already set
+                if (teamLead.Role != UserRole.TeamLead)
+                {
+                    teamLead.Role = UserRole.TeamLead;
+                    await _userRepository.UpdateAsync(teamLead);
+                }
 
-        return await GetDepartmentByIdAsync(department.Id, organizationId)
-               ?? throw new InvalidOperationException("Failed to retrieve updated department.");
+                await _departmentRepository.UpdateAsync(department);
+                await _departmentRepository.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return await GetDepartmentByIdAsync(department.Id, organizationId)
+                       ?? throw new InvalidOperationException("Failed to retrieve updated department.");
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     public async Task<IEnumerable<DepartmentDto>> GetAllDepartmentsAsync(Guid organizationId)
     {
         var departments = await _departmentRepository.GetAllByOrganizationAsync(organizationId);
-
-        return departments.Select(d => new DepartmentDto
-        {
-            Id = d.Id,
-            Name = d.Name,
-            TeamLeadId = d.TeamLeadId,
-            TeamLeadName = d.TeamLead?.FullName ?? "Unassigned",
-            EmployeeCount = d.Employees?.Count ?? 0,
-            Employees = d.Employees?.Select(e => new DepartmentEmployeeDto
-            {
-                Id = e.Id,
-                FullName = e.FullName,
-                Email = e.Email,
-                Designation = e.Designation ?? string.Empty,
-                Role = e.Role.ToString()
-            }).ToList() ?? new List<DepartmentEmployeeDto>(),
-            CreatedAt = d.CreatedAt
-        });
+        return departments.Select(MapToDto);
     }
 
     public async Task<DepartmentDto?> GetDepartmentByIdAsync(Guid id, Guid organizationId)
@@ -110,22 +113,24 @@ public class DepartmentService : IDepartmentService
 
         if (d == null || d.OrganizationId != organizationId) return null;
 
-        return new DepartmentDto
-        {
-            Id = d.Id,
-            Name = d.Name,
-            TeamLeadId = d.TeamLeadId,
-            TeamLeadName = d.TeamLead?.FullName ?? "Unassigned",
-            EmployeeCount = d.Employees?.Count ?? 0,
-            Employees = d.Employees?.Select(e => new DepartmentEmployeeDto
-            {
-                Id = e.Id,
-                FullName = e.FullName,
-                Email = e.Email,
-                Designation = e.Designation ?? string.Empty,
-                Role = e.Role.ToString()
-            }).ToList() ?? new List<DepartmentEmployeeDto>(),
-            CreatedAt = d.CreatedAt
-        };
+        return MapToDto(d);
     }
+
+    private static DepartmentDto MapToDto(Department d) => new()
+    {
+        Id = d.Id,
+        Name = d.Name,
+        TeamLeadId = d.TeamLeadId,
+        TeamLeadName = d.TeamLead?.FullName ?? "Unassigned",
+        EmployeeCount = d.Employees?.Count ?? 0,
+        Employees = d.Employees?.Select(e => new DepartmentEmployeeDto
+        {
+            Id = e.Id,
+            FullName = e.FullName,
+            Email = e.Email,
+            Designation = e.Designation ?? string.Empty,
+            Role = e.Role.ToString()
+        }).ToList() ?? new List<DepartmentEmployeeDto>(),
+        CreatedAt = d.CreatedAt
+    };
 }

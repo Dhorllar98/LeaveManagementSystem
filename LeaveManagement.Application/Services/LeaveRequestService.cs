@@ -282,7 +282,9 @@ public class LeaveRequestService : ILeaveRequestService
         _leaveRepository.Update(leave);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return (true, "Leave request updated successfully.", 200, leave);
+        // Map to summary DTO instead of returning raw domain entity
+        var summaryDto = MapToSummaryDto(leave);
+        return (true, "Leave request updated successfully.", 200, summaryDto);
     }
 
     public async Task<(bool Success, string Message, int StatusCode)> DeleteLeaveRequestAsync(
@@ -314,43 +316,58 @@ public class LeaveRequestService : ILeaveRequestService
         ManagerActionDto dto,
         CancellationToken cancellationToken = default)
     {
-        var orgId = await GetUserOrgIdAsync(currentUserId, cancellationToken);
-        var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
+        var strategy = _context.Database.CreateExecutionStrategy();
 
-        if (leave == null || (leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId))
-            return (false, "Leave request not found.", 404);
-
-        if (leave.EmployeeId == currentUserId)
-            return (false, "You cannot approve your own leave request.", 400);
-
-        if (leave.Status != LeaveStatus.Pending)
-            return (false, "Only pending leave requests can be approved.", 400);
-
-        var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
-        if (applicant != null)
+        return await strategy.ExecuteAsync(async () =>
         {
-            if (applicant.LeaveBalance < leave.NumberOfDays)
+            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+            try
             {
-                return (false, $"Approval failed. The employee requested {leave.NumberOfDays} day(s), but only has {Math.Max(0, applicant.LeaveBalance)} day(s) remaining.", 400);
+                var orgId = await GetUserOrgIdAsync(currentUserId, cancellationToken);
+                var leave = await _leaveRepository.GetByIdAsync(id, cancellationToken);
+
+                if (leave == null || (leave.OrganizationId != orgId && leave.Employee?.OrganizationId != orgId))
+                    return (false, "Leave request not found.", 404);
+
+                if (leave.EmployeeId == currentUserId)
+                    return (false, "You cannot approve your own leave request.", 400);
+
+                if (leave.Status != LeaveStatus.Pending)
+                    return (false, "Only pending leave requests can be approved.", 400);
+
+                var applicant = await _userRepository.GetByIdAsync(leave.EmployeeId, cancellationToken);
+                if (applicant != null)
+                {
+                    if (applicant.LeaveBalance < leave.NumberOfDays)
+                    {
+                        return (false, $"Approval failed. The employee requested {leave.NumberOfDays} day(s), but only has {Math.Max(0, applicant.LeaveBalance)} day(s) remaining.", 400);
+                    }
+
+                    applicant.LeaveBalance = Math.Max(0, applicant.LeaveBalance - leave.NumberOfDays);
+                    _userRepository.Update(applicant);
+                }
+
+                leave.Status = LeaveStatus.Approved;
+                leave.Approved = true;
+                leave.ManagerComments = dto.Comments;
+
+                _leaveRepository.Update(leave);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                if (applicant != null && applicant.OrganizationId.HasValue)
+                {
+                    DispatchApprovalEmail(applicant, leave, dto.Comments);
+                }
+
+                return (true, "Leave request approved successfully.", 200);
             }
-
-            applicant.LeaveBalance = Math.Max(0, applicant.LeaveBalance - leave.NumberOfDays);
-            _userRepository.Update(applicant);
-        }
-
-        leave.Status = LeaveStatus.Approved;
-        leave.Approved = true;
-        leave.ManagerComments = dto.Comments;
-
-        _leaveRepository.Update(leave);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        if (applicant != null && applicant.OrganizationId.HasValue)
-        {
-            DispatchApprovalEmail(applicant, leave, dto.Comments);
-        }
-
-        return (true, "Leave request approved successfully.", 200);
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        });
     }
 
     public async Task<(bool Success, string Message, int StatusCode)> RejectLeaveAsync(

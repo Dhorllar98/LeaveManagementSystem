@@ -3,9 +3,9 @@ using LeaveManagement.Application.DTOs.User;
 
 namespace LeaveManagement.Application.Validators;
 
-public class UpdateUserRequestValidator : AbstractValidator<UpdateUserDto>
+public class UpdateUserProfileValidator : AbstractValidator<UpdateUserDto>
 {
-    public UpdateUserRequestValidator()
+    public UpdateUserProfileValidator()
     {
         RuleFor(x => x.FullName)
             .Must(name => name == null || (!string.IsNullOrWhiteSpace(name) && name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2))
