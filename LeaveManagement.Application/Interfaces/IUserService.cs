@@ -1,6 +1,5 @@
 ﻿using LeaveManagement.Application.Common.Models;
 using LeaveManagement.Application.DTOs.User;
-using LeaveManagement.Application.DTOs.Users;
 using Microsoft.AspNetCore.Http;
 
 namespace LeaveManagement.Application.Interfaces;
@@ -21,18 +20,18 @@ public interface IUserService
         Guid currentUserId,
         CancellationToken cancellationToken = default);
 
-    Task<(bool Success, string Message, int StatusCode, object? Data)> ProvisionUserAsync(
+    Task<ApiResponse<UserResponseDto>> ProvisionUserAsync(
         Guid hrUserId,
         ProvisionUserDto dto,
         CancellationToken cancellationToken = default);
 
-    Task<(bool Success, string Message, int StatusCode, object? Data)> UpdateUserAsync(
+    Task<ApiResponse<UserResponseDto>> UpdateUserAsync(
         Guid id,
         Guid currentUserId,
         UpdateUserDto dto,
         CancellationToken cancellationToken = default);
 
-    Task<(bool Success, string Message, int StatusCode, BulkUploadResultDto? Data)> BulkUploadUsersAsync(
+    Task<ApiResponse<BulkUploadResultDto>> BulkUploadUsersAsync(
         Guid hrUserId,
         IFormFile file,
         CancellationToken cancellationToken = default);

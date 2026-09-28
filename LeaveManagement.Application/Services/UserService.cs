@@ -1,7 +1,8 @@
-﻿using LeaveManagement.Application.Common.Models;
+﻿using System.Globalization;
+using ClosedXML.Excel;
+using LeaveManagement.Application.Common.Models;
 using LeaveManagement.Application.DTOs.LeaveAllocation;
 using LeaveManagement.Application.DTOs.User;
-using LeaveManagement.Application.DTOs.Users;
 using LeaveManagement.Application.Interfaces;
 using LeaveManagement.Domain.Entities;
 using LeaveManagement.Domain.Enums;
@@ -53,12 +54,11 @@ public class UserService : IUserService
 
         if (!string.IsNullOrWhiteSpace(filter.SearchTerm))
         {
-            var term = filter.SearchTerm.Trim().ToLower();
-
+            var term = $"%{filter.SearchTerm.Trim()}%";
             query = query.Where(u =>
-                u.FullName.ToLower().Contains(term) ||
-                u.Email.ToLower().Contains(term) ||
-                (u.EmployeeCode != null && u.EmployeeCode.ToLower().Contains(term)));
+                EF.Functions.Like(u.FullName, term) ||
+                EF.Functions.Like(u.Email, term) ||
+                (u.EmployeeCode != null && EF.Functions.Like(u.EmployeeCode, term)));
         }
 
         if (filter.DepartmentId.HasValue)
@@ -74,7 +74,7 @@ public class UserService : IUserService
         var totalCount = await query.CountAsync(cancellationToken);
 
         var pageNumber = filter.PageNumber < 1 ? 1 : filter.PageNumber;
-        var pageSize = filter.PageSize < 1 ? 10 : (filter.PageSize > 100 ? 100 : filter.PageSize);
+        var pageSize = Math.Clamp(filter.PageSize, 1, 100);
 
         var users = await query
             .OrderByDescending(u => u.CreatedAt)
@@ -99,15 +99,18 @@ public class UserService : IUserService
             .ToListAsync(cancellationToken);
 
         int currentYear = DateTime.UtcNow.Year;
+        var userIds = users.Select(u => u.Id).ToList();
+
+        // Batch fetch balances to eliminate N+1 database calls
+        var balancesGrouped = await _leaveAllocationService.GetUsersLeaveBalancesAsync(
+            userIds, orgId.Value, currentYear, cancellationToken);
+
         foreach (var userDto in users)
         {
-            var balances = await _leaveAllocationService.GetUserLeaveBalancesAsync(
-                userDto.Id,
-                orgId.Value,
-                currentYear,
-                cancellationToken);
-
-            userDto.LeaveBalances = balances.ToList();
+            if (balancesGrouped.TryGetValue(userDto.Id, out var balances))
+            {
+                userDto.LeaveBalances = balances;
+            }
         }
 
         return new PagedResult<UserResponseDto>
@@ -127,7 +130,7 @@ public class UserService : IUserService
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
 
-        if (currentUser == null || !currentUser.OrganizationId.HasValue || !currentUser.DepartmentId.HasValue)
+        if (currentUser?.OrganizationId == null || currentUser.DepartmentId == null)
         {
             return Enumerable.Empty<UserResponseDto>();
         }
@@ -186,10 +189,7 @@ public class UserService : IUserService
         {
             int currentYear = DateTime.UtcNow.Year;
             var balances = await _leaveAllocationService.GetUserLeaveBalancesAsync(
-                userDto.Id,
-                orgId.Value,
-                currentYear,
-                cancellationToken);
+                userDto.Id, orgId.Value, currentYear, cancellationToken);
 
             userDto.LeaveBalances = balances.ToList();
         }
@@ -197,26 +197,26 @@ public class UserService : IUserService
         return userDto;
     }
 
-    public async Task<(bool Success, string Message, int StatusCode, object? Data)> ProvisionUserAsync(
+    public async Task<ApiResponse<UserResponseDto>> ProvisionUserAsync(
         Guid hrUserId,
         ProvisionUserDto dto,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email))
         {
-            return (false, "FullName and Email are required.", 400, null);
+            return ApiResponse<UserResponseDto>.FailureResponse("FullName and Email are required.", 400);
         }
 
         var hrUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == hrUserId, cancellationToken);
         if (hrUser?.OrganizationId == null)
         {
-            return (false, "HR account is not linked to any organization.", 400, null);
+            return ApiResponse<UserResponseDto>.FailureResponse("HR account is not linked to any organization.", 400);
         }
 
         var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
         if (org == null)
         {
-            return (false, "Organization not found.", 400, null);
+            return ApiResponse<UserResponseDto>.FailureResponse("Organization not found.", 400);
         }
 
         var emailExists = await _context.Users
@@ -225,29 +225,17 @@ public class UserService : IUserService
 
         if (emailExists)
         {
-            return (false, $"Email '{dto.Email}' already exists in your organization.", 400, null);
+            return ApiResponse<UserResponseDto>.FailureResponse($"Email '{dto.Email}' already exists in your organization.", 400);
         }
 
-        if (dto.DepartmentId.HasValue)
+        if (dto.DepartmentId.HasValue && !await _context.Departments.AnyAsync(d => d.Id == dto.DepartmentId.Value && d.OrganizationId == org.Id, cancellationToken))
         {
-            var deptExists = await _context.Departments
-                .AnyAsync(d => d.Id == dto.DepartmentId.Value && d.OrganizationId == org.Id, cancellationToken);
-
-            if (!deptExists)
-            {
-                return (false, "Selected department does not exist in your organization.", 400, null);
-            }
+            return ApiResponse<UserResponseDto>.FailureResponse("Selected department does not exist in your organization.", 400);
         }
 
-        if (dto.TeamLeadId.HasValue)
+        if (dto.TeamLeadId.HasValue && !await _context.Users.AnyAsync(u => u.Id == dto.TeamLeadId.Value && u.OrganizationId == org.Id, cancellationToken))
         {
-            var leadExists = await _context.Users
-                .AnyAsync(u => u.Id == dto.TeamLeadId.Value && u.OrganizationId == org.Id, cancellationToken);
-
-            if (!leadExists)
-            {
-                return (false, "Selected team lead does not exist in your organization.", 400, null);
-            }
+            return ApiResponse<UserResponseDto>.FailureResponse("Selected team lead does not exist in your organization.", 400);
         }
 
         org.LastEmployeeNumber++;
@@ -284,113 +272,90 @@ public class UserService : IUserService
         int currentYear = DateTime.UtcNow.Year;
         foreach (var lt in leaveTypes)
         {
-            var allocation = new LeaveAllocation
+            await _context.LeaveAllocations.AddAsync(new LeaveAllocation
             {
                 Id = Guid.NewGuid(),
                 EmployeeId = newUser.Id,
                 LeaveTypeId = lt.Id,
                 NumberOfDays = lt.DefaultDays,
                 Period = currentYear
-            };
-            await _context.LeaveAllocations.AddAsync(allocation, cancellationToken);
+            }, cancellationToken);
         }
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        string baseUrl = string.IsNullOrWhiteSpace(dto.ResetPasswordUrl)
-            ? "https://new-leave-management-system-qszg.vercel.app/reset-password"
-            : dto.ResetPasswordUrl.TrimEnd('/');
-
-        string resetLink = $"{baseUrl}?token={resetToken}&email={Uri.EscapeDataString(newUser.Email)}";
-
-        string emailBody = $@"
-            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;'>
-                <h3>Welcome to LeaveFlow, {dto.FullName}!</h3>
-                <p>An account has been created for you by HR.</p>
-                <p><strong>Employee ID:</strong> {formattedCode}</p>
-                <p><strong>Temporary Password:</strong> <code style='background: #f4f4f4; padding: 2px 6px; border-radius: 4px;'>{tempPassword}</code></p>
-                
-                <p style='margin-top: 25px;'>Please click the button below to complete your setup and create a new password:</p>
-                
-                <div style='margin: 20px 0;'>
-                    <a href='{resetLink}' target='_blank' style='background-color: #007bff; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;'>Set Permanent Password</a>
-                </div>
-
-                <p style='font-size: 13px; color: #666;'>If the button above does not work, click or copy this direct link:<br/>
-                    <a href='{resetLink}' target='_blank' style='color: #007bff;'>{resetLink}</a>
-                </p>
-
-                <p style='font-size: 12px; color: #888; margin-top: 30px;'><em>Note: This password reset link will expire in 24 hours.</em></p>
-            </div>";
-
-        _ = _emailService.SendEmailAsync(dto.Email, "Welcome to LeaveFlow", emailBody);
-
-        var resultData = new
+        _ = Task.Run(async () =>
         {
-            newUser.Id,
-            newUser.FullName,
-            newUser.Email,
-            newUser.EmployeeCode,
-            newUser.DepartmentId,
-            newUser.TeamLeadId,
-            newUser.Designation,
+            try
+            {
+                string baseUrl = string.IsNullOrWhiteSpace(dto.ResetPasswordUrl)
+                    ? "https://new-leave-management-system-qszg.vercel.app/reset-password"
+                    : dto.ResetPasswordUrl.TrimEnd('/');
+
+                string resetLink = $"{baseUrl}?token={resetToken}&email={Uri.EscapeDataString(newUser.Email)}";
+                string emailBody = $"Welcome to LeaveFlow, {dto.FullName}! Use code {formattedCode} and temp password: {tempPassword}. Reset here: {resetLink}";
+
+                await _emailService.SendEmailAsync(dto.Email, "Welcome to LeaveFlow", emailBody);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send welcome email to {Email}", newUser.Email);
+            }
+        });
+
+        var responseDto = new UserResponseDto
+        {
+            Id = newUser.Id,
+            FullName = newUser.FullName,
+            Email = newUser.Email,
+            EmployeeCode = newUser.EmployeeCode,
+            DepartmentId = newUser.DepartmentId,
+            TeamLeadId = newUser.TeamLeadId,
+            Designation = newUser.Designation,
             Role = newUser.Role.ToString(),
-            newUser.LeaveBalance
+            LeaveBalance = newUser.LeaveBalance
         };
 
-        return (true, "User provisioned successfully.", 201, resultData);
+        return ApiResponse<UserResponseDto>.SuccessResponse(responseDto, "User provisioned successfully.", 201);
     }
 
-    public async Task<(bool Success, string Message, int StatusCode, object? Data)> UpdateUserAsync(
+    public async Task<ApiResponse<UserResponseDto>> UpdateUserAsync(
         Guid id,
         Guid currentUserId,
         UpdateUserDto dto,
         CancellationToken cancellationToken = default)
     {
         var orgId = await GetOrganizationIdAsync(currentUserId, cancellationToken);
-        if (orgId == null) return (false, "User organization not found.", 400, null);
+        if (orgId == null) return ApiResponse<UserResponseDto>.FailureResponse("User organization not found.", 400);
 
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id && u.OrganizationId == orgId, cancellationToken);
         if (user == null)
         {
-            return (false, $"User with ID '{id}' not found or does not belong to your organization.", 404, null);
+            return ApiResponse<UserResponseDto>.FailureResponse($"User with ID '{id}' not found or does not belong to your organization.", 404);
         }
 
         if (dto.DepartmentId.HasValue)
         {
-            var deptExists = await _context.Departments
-                .AnyAsync(d => d.Id == dto.DepartmentId.Value && d.OrganizationId == orgId, cancellationToken);
-
-            if (!deptExists)
+            if (!await _context.Departments.AnyAsync(d => d.Id == dto.DepartmentId.Value && d.OrganizationId == orgId, cancellationToken))
             {
-                return (false, "Selected department does not exist in your organization.", 400, null);
+                return ApiResponse<UserResponseDto>.FailureResponse("Selected department does not exist in your organization.", 400);
             }
             user.DepartmentId = dto.DepartmentId;
         }
 
         if (dto.TeamLeadId.HasValue)
         {
-            var leadExists = await _context.Users
-                .AnyAsync(u => u.Id == dto.TeamLeadId.Value && u.OrganizationId == orgId, cancellationToken);
-
-            if (!leadExists)
+            if (!await _context.Users.AnyAsync(u => u.Id == dto.TeamLeadId.Value && u.OrganizationId == orgId, cancellationToken))
             {
-                return (false, "Selected team lead does not exist in your organization.", 400, null);
+                return ApiResponse<UserResponseDto>.FailureResponse("Selected team lead does not exist in your organization.", 400);
             }
             user.TeamLeadId = dto.TeamLeadId;
         }
 
-        if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName;
-
-        if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email;
-
-        if (!string.IsNullOrWhiteSpace(dto.Designation)) user.Designation = dto.Designation;
-
-        if (dto.LeaveBalance.HasValue)
-        {
-            user.LeaveBalance = Math.Max(0, dto.LeaveBalance.Value);
-        }
-
+        if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName.Trim();
+        if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email.Trim();
+        if (!string.IsNullOrWhiteSpace(dto.Designation)) user.Designation = dto.Designation.Trim();
+        if (dto.LeaveBalance.HasValue) user.LeaveBalance = Math.Max(0, dto.LeaveBalance.Value);
         if (!string.IsNullOrWhiteSpace(dto.Role) && Enum.TryParse<UserRole>(dto.Role, true, out var parsedRole))
         {
             user.Role = parsedRole;
@@ -398,90 +363,70 @@ public class UserService : IUserService
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        var updatedData = new
+        var responseDto = new UserResponseDto
         {
-            user.Id,
-            user.FullName,
-            user.Email,
-            user.EmployeeCode,
-            user.DepartmentId,
-            user.TeamLeadId,
-            user.Designation,
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
+            EmployeeCode = user.EmployeeCode,
+            DepartmentId = user.DepartmentId,
+            TeamLeadId = user.TeamLeadId,
+            Designation = user.Designation,
             Role = user.Role.ToString(),
-            user.LeaveBalance
+            LeaveBalance = user.LeaveBalance
         };
 
-        return (true, "Employee updated successfully.", 200, updatedData);
+        return ApiResponse<UserResponseDto>.SuccessResponse(responseDto, "Employee updated successfully.", 200);
     }
 
-    public async Task<(bool Success, string Message, int StatusCode, BulkUploadResultDto? Data)> BulkUploadUsersAsync(
+    public async Task<ApiResponse<BulkUploadResultDto>> BulkUploadUsersAsync(
         Guid hrUserId,
         IFormFile file,
         CancellationToken cancellationToken = default)
     {
         if (file == null || file.Length == 0)
-            return (false, "Please upload a valid CSV file.", 400, null);
+            return ApiResponse<BulkUploadResultDto>.FailureResponse("Please upload a valid Excel file.", 400);
 
-        if (!file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-            return (false, "Only .csv files are supported.", 400, null);
+        if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            return ApiResponse<BulkUploadResultDto>.FailureResponse("Only .xlsx Excel files are supported.", 400);
 
         var hrUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == hrUserId, cancellationToken);
         if (hrUser?.OrganizationId == null)
-        {
-            return (false, "HR account is not linked to any organization.", 400, null);
-        }
+            return ApiResponse<BulkUploadResultDto>.FailureResponse("HR account is not linked to any organization.", 400);
 
         var org = await _context.Organizations.FirstOrDefaultAsync(o => o.Id == hrUser.OrganizationId, cancellationToken);
         if (org == null)
-        {
-            return (false, "Organization not found.", 400, null);
-        }
+            return ApiResponse<BulkUploadResultDto>.FailureResponse("Organization not found.", 400);
 
-        var departments = await _context.Departments
-            .AsNoTracking()
-            .Where(d => d.OrganizationId == org.Id)
-            .ToListAsync(cancellationToken);
-
-        var leaveTypes = await _context.LeaveTypes
-            .AsNoTracking()
-            .Where(lt => lt.OrganizationId == org.Id)
-            .ToListAsync(cancellationToken);
-
-        var existingEmails = await _context.Users
-            .AsNoTracking()
-            .Where(u => u.OrganizationId == org.Id)
-            .Select(u => u.Email.ToLower())
-            .ToListAsync(cancellationToken);
+        var departments = await _context.Departments.AsNoTracking().Where(d => d.OrganizationId == org.Id).ToListAsync(cancellationToken);
+        var leaveTypes = await _context.LeaveTypes.AsNoTracking().Where(lt => lt.OrganizationId == org.Id).ToListAsync(cancellationToken);
+        var existingEmails = await _context.Users.AsNoTracking().Where(u => u.OrganizationId == org.Id).Select(u => u.Email.ToLower()).ToListAsync(cancellationToken);
 
         var emailHashSet = new HashSet<string>(existingEmails);
-
         var createdUsers = new List<User>();
-        var emailTasks = new List<Task>();
         var errors = new List<string>();
-        int rowNumber = 1;
         int currentYear = DateTime.UtcNow.Year;
+        int totalRows = 0;
 
-        using var reader = new StreamReader(file.OpenReadStream());
-        await reader.ReadLineAsync(cancellationToken);
+        using var stream = file.OpenReadStream();
+        using var workbook = new XLWorkbook(stream);
+        var worksheet = workbook.Worksheets.FirstOrDefault();
 
-        while (!reader.EndOfStream)
+        if (worksheet == null)
+            return ApiResponse<BulkUploadResultDto>.FailureResponse("The uploaded Excel file contains no worksheets.", 400);
+
+        var rows = worksheet.RowsUsed().Skip(1); // Skip header row
+
+        foreach (var row in rows)
         {
-            rowNumber++;
-            string? line = await reader.ReadLineAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(line)) continue;
+            totalRows++;
+            int rowNumber = row.RowNumber();
 
-            var cols = line.Split(',');
-            if (cols.Length < 2)
-            {
-                errors.Add($"Row {rowNumber}: Minimum required fields are FullName and Email.");
-                continue;
-            }
-
-            string fullName = cols[0].Trim();
-            string email = cols[1].Trim();
-            string roleStr = cols.Length > 2 ? cols[2].Trim() : "Employee";
-            string designation = cols.Length > 3 ? cols[3].Trim() : "Employee";
-            string deptName = cols.Length > 4 ? cols[4].Trim() : string.Empty;
+            string fullName = row.Cell(1).GetValue<string>()?.Trim() ?? string.Empty;
+            string email = row.Cell(2).GetValue<string>()?.Trim() ?? string.Empty;
+            string roleStr = row.Cell(3).GetValue<string>()?.Trim() ?? string.Empty;
+            string designation = row.Cell(4).GetValue<string>()?.Trim() ?? string.Empty;
+            string deptName = row.Cell(5).GetValue<string>()?.Trim() ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email))
             {
@@ -495,18 +440,18 @@ public class UserService : IUserService
                 continue;
             }
 
-            Guid? deptId = null;
-            if (!string.IsNullOrWhiteSpace(deptName))
-            {
-                var matchedDept = departments.FirstOrDefault(d => d.Name.Equals(deptName, StringComparison.OrdinalIgnoreCase));
-                if (matchedDept != null) deptId = matchedDept.Id;
-            }
+            Guid? deptId = string.IsNullOrWhiteSpace(deptName)
+                ? null
+                : departments.FirstOrDefault(d => d.Name.Equals(deptName, StringComparison.OrdinalIgnoreCase))?.Id;
 
             org.LastEmployeeNumber++;
             string formattedCode = $"{org.CodePrefix}-{org.LastEmployeeNumber:D2}";
-
             string tempPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
-            Enum.TryParse<UserRole>(roleStr, true, out var userRole);
+
+            if (!Enum.TryParse<UserRole>(roleStr, true, out var userRole))
+            {
+                userRole = UserRole.Employee;
+            }
 
             var newUser = new User
             {
@@ -515,7 +460,7 @@ public class UserService : IUserService
                 Email = email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword),
                 Role = userRole,
-                Designation = designation,
+                Designation = string.IsNullOrWhiteSpace(designation) ? "Employee" : designation,
                 DepartmentId = deptId,
                 OrganizationId = org.Id,
                 EmployeeCode = formattedCode,
@@ -529,41 +474,31 @@ public class UserService : IUserService
 
             foreach (var lt in leaveTypes)
             {
-                var allocation = new LeaveAllocation
+                await _context.LeaveAllocations.AddAsync(new LeaveAllocation
                 {
                     Id = Guid.NewGuid(),
                     EmployeeId = newUser.Id,
                     LeaveTypeId = lt.Id,
                     NumberOfDays = lt.DefaultDays,
                     Period = currentYear
-                };
-                await _context.LeaveAllocations.AddAsync(allocation, cancellationToken);
+                }, cancellationToken);
             }
-
-            string emailBody = $@"
-                <h3>Welcome to LeaveFlow, {fullName}!</h3>
-                <p>An account has been created for you by HR.</p>
-                <p><strong>Employee ID:</strong> {formattedCode}</p>
-                <p><strong>Temporary Password:</strong> <code>{tempPassword}</code></p>";
-
-            emailTasks.Add(_emailService.SendEmailAsync(email, "Welcome to LeaveFlow", emailBody));
         }
 
         if (createdUsers.Count > 0)
         {
             await _context.SaveChangesAsync(cancellationToken);
-            _ = Task.WhenAll(emailTasks);
         }
 
-        var result = new BulkUploadResultDto
+        var resultData = new BulkUploadResultDto
         {
-            Success = true,
+            Success = errors.Count == 0,
             Message = $"Bulk upload completed. {createdUsers.Count} employee(s) created.",
-            TotalProcessed = rowNumber - 1,
+            TotalProcessed = totalRows,
             SuccessfullyCreated = createdUsers.Count,
             Errors = errors
         };
 
-        return (true, result.Message, 200, result);
+        return ApiResponse<BulkUploadResultDto>.SuccessResponse(resultData, resultData.Message, 200);
     }
 }

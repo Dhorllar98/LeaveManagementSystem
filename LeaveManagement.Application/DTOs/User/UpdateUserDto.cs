@@ -9,4 +9,5 @@ public class UpdateUserDto
     public string? Designation { get; set; }
     public string? Role { get; set; }
     public int? LeaveBalance { get; set; }
+    public DateOnly? DateOfBirth { get; set; }
 }

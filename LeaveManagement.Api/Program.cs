@@ -3,9 +3,10 @@ using LeaveManagement.Api.Extensions;
 using LeaveManagement.Api.Hubs;
 using LeaveManagement.Api.Middleware;
 using LeaveManagement.Application.Common.Models;
+using LeaveManagement.Application.Interfaces;
+using LeaveManagement.Application.Services;
 using LeaveManagement.Infrastructure;
 using LeaveManagement.Infrastructure.Data;
-using LeaveManagement.Infrastructure.Services;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
@@ -47,6 +48,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddPresentationServices(builder.Configuration);
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
+
+// Register PublicHolidayService with HttpClient for Google Calendar API calls
+builder.Services.AddHttpClient<IPublicHolidayService, PublicHolidayService>();
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>();
