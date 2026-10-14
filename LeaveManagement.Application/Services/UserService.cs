@@ -348,7 +348,15 @@ public class UserService : IUserService
 
         string baseUrl = GetResetPasswordBaseUrl(dto.ResetPasswordUrl);
         string resetLink = $"{baseUrl}?token={resetToken}&email={Uri.EscapeDataString(newUser.Email)}";
-        string emailBody = $"Welcome to LeaveFlow, {dto.FullName}! Use code {newUser.EmployeeCode} and temp password: {tempPassword}. Reset here: {resetLink}";
+        string emailBody = $@"
+            <h3>Welcome to LeaveFlow, {dto.FullName}!</h3>
+            <p>Your employee account has been successfully provisioned.</p>
+            <ul>
+                <li><strong>Employee Code:</strong> {newUser.EmployeeCode}</li>
+                <li><strong>Temporary Password:</strong> {tempPassword}</li>
+            </ul>
+            <p>Please <a href='{resetLink}'>click here to set your password</a> and log in to your dashboard.</p>
+            <p><strong>Action Required:</strong> Once logged in, please upload your required onboarding documents, credentials (IDs, Certificates), and compliance files.</p>";
         string recipientEmail = dto.Email.Trim();
 
         _ = Task.Run(async () =>
@@ -359,7 +367,7 @@ public class UserService : IUserService
 
             try
             {
-                await emailService.SendEmailAsync(recipientEmail, "Welcome to LeaveFlow", emailBody);
+                await emailService.SendEmailAsync(recipientEmail, "Welcome to LeaveFlow - Onboarding Documents Required", emailBody);
             }
             catch (Exception ex)
             {
@@ -567,7 +575,6 @@ public class UserService : IUserService
 
         var preparedUsers = new System.Collections.Concurrent.ConcurrentBag<(User User, string TempPassword, string ResetToken)>();
 
-        // Parallelizing CPU-intensive BCrypt Hashing
         Parallel.ForEach(parsedItems, item =>
         {
             string tempPassword = "Welcome" + Random.Shared.Next(1000, 9999) + "!";
@@ -648,9 +655,17 @@ public class UserService : IUserService
                 try
                 {
                     string resetLink = $"{baseUrl}?token={item.ResetToken}&email={Uri.EscapeDataString(item.User.Email)}";
-                    string emailBody = $"Welcome to LeaveFlow, {item.User.FullName}! Use code {item.User.EmployeeCode} and temp password: {item.TempPassword}. Reset here: {resetLink}";
+                    string emailBody = $@"
+                        <h3>Welcome to LeaveFlow, {item.User.FullName}!</h3>
+                        <p>Your employee account has been successfully provisioned.</p>
+                        <ul>
+                            <li><strong>Employee Code:</strong> {item.User.EmployeeCode}</li>
+                            <li><strong>Temporary Password:</strong> {item.TempPassword}</li>
+                        </ul>
+                        <p>Please <a href='{resetLink}'>click here to set your password</a> and log in to your dashboard.</p>
+                        <p><strong>Action Required:</strong> Once logged in, please upload your required onboarding documents, credentials (IDs, Certificates), and compliance files.</p>";
 
-                    await emailService.SendEmailAsync(item.User.Email, "Welcome to LeaveFlow", emailBody);
+                    await emailService.SendEmailAsync(item.User.Email, "Welcome to LeaveFlow - Onboarding Documents Required", emailBody);
                 }
                 catch (Exception ex)
                 {
@@ -669,5 +684,104 @@ public class UserService : IUserService
         };
 
         return ApiResponse<BulkUploadResultDto>.SuccessResponse(resultData, resultData.Message, 200);
+    }
+
+    public async Task<ApiResponse<object>> UploadDocumentAsync(
+        Guid currentUserId,
+        Guid? targetUserId,
+        string documentName,
+        string documentType,
+        IFormFile file,
+        CancellationToken cancellationToken = default)
+    {
+        if (file == null || file.Length == 0)
+            return ApiResponse<object>.FailureResponse("Please upload a valid file.", 400);
+
+        var currentUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+        if (currentUser?.OrganizationId == null)
+            return ApiResponse<object>.FailureResponse("User organization not found.", 400);
+
+        Guid ownerId = currentUserId;
+        if (targetUserId.HasValue && targetUserId.Value != currentUserId)
+        {
+            if (currentUser.Role != UserRole.HR)
+                return ApiResponse<object>.FailureResponse("Only HR can upload documents on behalf of other employees.", 403);
+
+            var targetUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == targetUserId.Value && u.OrganizationId == currentUser.OrganizationId, cancellationToken);
+            if (targetUser == null)
+                return ApiResponse<object>.FailureResponse("Target employee not found in your organization.", 404);
+
+            ownerId = targetUserId.Value;
+        }
+
+        string uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "documents");
+        if (!Directory.Exists(uploadsFolder))
+            Directory.CreateDirectory(uploadsFolder);
+
+        string uniqueFileName = $"{Guid.NewGuid()}_{Path.GetFileName(file.FileName)}";
+        string filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream, cancellationToken);
+        }
+
+        string relativePath = $"/uploads/documents/{uniqueFileName}";
+
+        var document = new EmployeeDocument
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = currentUser.OrganizationId.Value,
+            UserId = ownerId,
+            DocumentName = string.IsNullOrWhiteSpace(documentName) ? file.FileName : documentName.Trim(),
+            DocumentType = string.IsNullOrWhiteSpace(documentType) ? "Credential" : documentType.Trim(),
+            FilePath = relativePath,
+            UploadedAt = DateTime.UtcNow
+        };
+
+        await _context.EmployeeDocuments.AddAsync(document, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return ApiResponse<object>.SuccessResponse(new { document.Id, document.FilePath }, "Document uploaded successfully.", 201);
+    }
+
+    public async Task<ApiResponse<IEnumerable<EmployeeDocumentDto>>> GetOrgDocumentsAsync(
+        Guid currentUserId,
+        Guid? employeeId,
+        CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId, cancellationToken);
+        if (currentUser?.OrganizationId == null)
+            return ApiResponse<IEnumerable<EmployeeDocumentDto>>.FailureResponse("User organization not found.", 400);
+
+        var query = _context.EmployeeDocuments
+            .AsNoTracking()
+            .Include(d => d.User)
+            .Where(d => d.OrganizationId == currentUser.OrganizationId.Value);
+
+        if (currentUser.Role != UserRole.HR)
+        {
+            query = query.Where(d => d.UserId == currentUserId);
+        }
+        else if (employeeId.HasValue)
+        {
+            query = query.Where(d => d.UserId == employeeId.Value);
+        }
+
+        var docs = await query
+            .OrderByDescending(d => d.UploadedAt)
+            .Select(d => new EmployeeDocumentDto
+            {
+                Id = d.Id,
+                UserId = d.UserId,
+                EmployeeName = d.User != null ? d.User.FullName : "N/A",
+                DocumentName = d.DocumentName,
+                DocumentType = d.DocumentType,
+                FilePath = d.FilePath,
+                UploadedAt = d.UploadedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return ApiResponse<IEnumerable<EmployeeDocumentDto>>.SuccessResponse(docs, "Documents retrieved successfully.", 200);
     }
 }

@@ -35,4 +35,17 @@ public interface IUserService
         Guid hrUserId,
         IFormFile file,
         CancellationToken cancellationToken = default);
+
+    Task<ApiResponse<object>> UploadDocumentAsync(
+        Guid currentUserId,
+        Guid? targetUserId,
+        string documentName,
+        string documentType,
+        IFormFile file,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiResponse<IEnumerable<EmployeeDocumentDto>>> GetOrgDocumentsAsync(
+        Guid currentUserId,
+        Guid? employeeId,
+        CancellationToken cancellationToken = default);
 }

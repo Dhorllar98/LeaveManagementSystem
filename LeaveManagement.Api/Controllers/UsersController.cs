@@ -149,4 +149,45 @@ public class UsersController : BaseController
 
         return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Employee_Bulk_Upload_Template.xlsx");
     }
+
+    [HttpPost("documents/upload")]
+    public async Task<IActionResult> UploadDocument(
+        [FromForm] Guid? targetUserId,
+        [FromForm] string documentName,
+        [FromForm] string documentType,
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == Guid.Empty)
+        {
+            return Unauthorized(new { message = "User identity invalid." });
+        }
+
+        var result = await _userService.UploadDocumentAsync(currentUserId, targetUserId, documentName, documentType, file, cancellationToken);
+        if (!result.Success)
+        {
+            return StatusCode(result.StatusCode, new { message = result.Message });
+        }
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("documents")]
+    public async Task<IActionResult> GetOrgDocuments([FromQuery] Guid? employeeId, CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == Guid.Empty)
+        {
+            return Unauthorized(new { message = "User identity invalid." });
+        }
+
+        var result = await _userService.GetOrgDocumentsAsync(currentUserId, employeeId, cancellationToken);
+        if (!result.Success)
+        {
+            return StatusCode(result.StatusCode, new { message = result.Message });
+        }
+
+        return Ok(result);
+    }
 }

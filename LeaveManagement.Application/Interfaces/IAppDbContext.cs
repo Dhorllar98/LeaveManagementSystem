@@ -15,6 +15,7 @@ public interface IAppDbContext
     DbSet<NotificationSetting> NotificationSettings { get; }
     DbSet<PublicHoliday> PublicHolidays { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DbSet<EmployeeDocument> EmployeeDocuments { get; }
 
     // Expose the database facade for transactions & execution strategies
     DatabaseFacade Database { get; }
