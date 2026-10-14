@@ -282,7 +282,6 @@ public class LeaveRequestService : ILeaveRequestService
         _leaveRepository.Update(leave);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // Map to summary DTO instead of returning raw domain entity
         var summaryDto = MapToSummaryDto(leave);
         return (true, "Leave request updated successfully.", 200, summaryDto);
     }
@@ -525,17 +524,28 @@ public class LeaveRequestService : ILeaveRequestService
                 var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
                 var realtimeService = scope.ServiceProvider.GetService<IRealtimeNotificationService>();
 
+                // Fetch full leave details with HandoverUser included
+                var fullLeave = await dbContext.LeaveRequests
+                    .AsNoTracking()
+                    .Include(l => l.HandoverUser)
+                    .Include(l => l.LeaveType)
+                    .FirstOrDefaultAsync(l => l.Id == leave.Id);
+
+                string relieverName = fullLeave?.HandoverUser?.FullName ?? "None assigned";
+
                 var settings = await dbContext.NotificationSettings
                     .AsNoTracking()
                     .FirstOrDefaultAsync(s => s.OrganizationId == applicant.OrganizationId!.Value);
 
                 if (settings == null || settings.EnableLeaveStatusUpdateEmails)
                 {
+                    // 1. Notify Applicant Directly
                     string subject = "Leave Request Approved - LeaveFlow";
                     string body = $@"
                         <h3>Your Leave Request Has Been Approved!</h3>
                         <p>Hi {applicant.FullName},</p>
                         <p>Your leave request for <strong>{leave.StartDate:yyyy-MM-dd}</strong> to <strong>{leave.EndDate:yyyy-MM-dd}</strong> ({leave.NumberOfDays} working days) has been <strong style='color: green;'>APPROVED</strong>.</p>
+                        <p><strong>Reliever Assigned:</strong> {relieverName}</p>
                         <p><strong>Comments:</strong> {comments ?? "None"}</p>
                         <p>Your remaining leave balance is <strong>{applicant.LeaveBalance}</strong> days.</p>";
 
@@ -550,10 +560,52 @@ public class LeaveRequestService : ILeaveRequestService
                         );
                     }
                 }
+
+                // 2. Organization-Wide Broadcast (Everyone gets notified of approved leave + reliever details)
+                if (applicant.OrganizationId.HasValue)
+                {
+                    string orgIdStr = applicant.OrganizationId.Value.ToString();
+                    string broadcastTitle = "Upcoming Leave Notice";
+                    string broadcastMsg = $"{applicant.FullName} is approved for leave from {leave.StartDate:yyyy-MM-dd} to {leave.EndDate:yyyy-MM-dd}. Reliever: {relieverName}.";
+
+                    string broadcastEmailSubject = $"Leave Notice: {applicant.FullName} is going on leave";
+                    string broadcastEmailBody = $@"
+                        <h3>Approved Leave Notice</h3>
+                        <p>Please be informed that <strong>{applicant.FullName}</strong> has an approved leave coming up.</p>
+                        <ul>
+                            <li><strong>Dates:</strong> {leave.StartDate:yyyy-MM-dd} to {leave.EndDate:yyyy-MM-dd} ({leave.NumberOfDays} working days)</li>
+                            <li><strong>Reliever / Cover:</strong> {relieverName}</li>
+                        </ul>";
+
+                    var orgUserEmails = await dbContext.Users
+                        .Where(u => u.OrganizationId == applicant.OrganizationId && u.Id != applicant.Id)
+                        .Select(u => u.Email)
+                        .ToListAsync();
+
+                    foreach (var email in orgUserEmails)
+                    {
+                        if (!string.IsNullOrEmpty(email))
+                        {
+                            try
+                            {
+                                await emailService.SendEmailAsync(email, broadcastEmailSubject, broadcastEmailBody);
+                            }
+                            catch (Exception emailEx)
+                            {
+                                _logger.LogError(emailEx, "Failed to send organization-wide leave notice email to {Email}", email);
+                            }
+                        }
+                    }
+
+                    if (realtimeService != null)
+                    {
+                        await realtimeService.SendNotificationToGroupAsync(orgIdStr, broadcastTitle, broadcastMsg);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending approval email or SignalR event to employee.");
+                _logger.LogError(ex, "Error sending approval email, organization broadcast, or SignalR event.");
             }
         });
     }

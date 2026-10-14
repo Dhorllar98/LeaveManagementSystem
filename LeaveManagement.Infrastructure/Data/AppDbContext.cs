@@ -31,6 +31,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<LeaveAllocation> LeaveAllocations => Set<LeaveAllocation>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<PublicHoliday> PublicHolidays => Set<PublicHoliday>();
+    public DbSet<EmployeeDocument> EmployeeDocuments => Set<EmployeeDocument>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
