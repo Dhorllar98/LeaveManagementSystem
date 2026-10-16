@@ -57,7 +57,7 @@ public class AppDbContext : DbContext, IAppDbContext
             if (entry.Entity is AuditLog || entry.State == EntityState.Detached || entry.State == EntityState.Unchanged)
                 continue;
 
-            // Automatically manage entity audit timestamps
+            // Automatically manage entity audit timestamps safely
             UpdateEntityAuditProperties(entry, now);
 
             // Build structural change audit
@@ -118,18 +118,15 @@ public class AppDbContext : DbContext, IAppDbContext
 
     private static void UpdateEntityAuditProperties(EntityEntry entry, DateTime now)
     {
-        // Reflection/Property check for entities containing CreatedAt / UpdatedAt
-        var createdAtProp = entry.Property("CreatedAt");
-        var updatedAtProp = entry.Property("UpdatedAt");
-
-        if (entry.State == EntityState.Added && createdAtProp != null)
+        // Safely check if the entity defines CreatedAt or UpdatedAt to prevent exceptions
+        if (entry.State == EntityState.Added && entry.Metadata.FindProperty("CreatedAt") != null)
         {
-            createdAtProp.CurrentValue = now;
+            entry.Property("CreatedAt").CurrentValue = now;
         }
 
-        if (entry.State == EntityState.Modified && updatedAtProp != null)
+        if (entry.State == EntityState.Modified && entry.Metadata.FindProperty("UpdatedAt") != null)
         {
-            updatedAtProp.CurrentValue = now;
+            entry.Property("UpdatedAt").CurrentValue = now;
         }
     }
 }
