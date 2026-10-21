@@ -285,7 +285,8 @@ namespace LeaveManagement.Infrastructure.Migrations
 
                     b.Property<string>("CodePrefix")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("CompanySize")
                         .HasColumnType("text");
@@ -308,7 +309,14 @@ namespace LeaveManagement.Infrastructure.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<Guid?>("ParentOrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("RequiresLeave")
+                        .HasColumnType("boolean");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -322,6 +330,8 @@ namespace LeaveManagement.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ParentOrganizationId");
 
                     b.ToTable("Organizations");
                 });
@@ -543,6 +553,16 @@ namespace LeaveManagement.Infrastructure.Migrations
                     b.Navigation("Organization");
                 });
 
+            modelBuilder.Entity("LeaveManagement.Domain.Entities.Organization", b =>
+                {
+                    b.HasOne("LeaveManagement.Domain.Entities.Organization", "ParentOrganization")
+                        .WithMany("SubOrganizations")
+                        .HasForeignKey("ParentOrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ParentOrganization");
+                });
+
             modelBuilder.Entity("LeaveManagement.Domain.Entities.User", b =>
                 {
                     b.HasOne("LeaveManagement.Domain.Entities.Department", "Department")
@@ -575,6 +595,8 @@ namespace LeaveManagement.Infrastructure.Migrations
             modelBuilder.Entity("LeaveManagement.Domain.Entities.Organization", b =>
                 {
                     b.Navigation("LeaveTypes");
+
+                    b.Navigation("SubOrganizations");
 
                     b.Navigation("Users");
                 });

@@ -77,10 +77,20 @@ public class AuthService : IAuthService
             throw new ConflictException($"User with email '{request.AdminEmail}' already exists.");
         }
 
+        // Validate Parent Organization if specified (for sub-organizations)
+        if (request.ParentOrganizationId.HasValue)
+        {
+            var parentOrg = await _organizationRepository.GetByIdAsync(request.ParentOrganizationId.Value, cancellationToken);
+            if (parentOrg == null)
+            {
+                throw new Domain.Exceptions.ValidationException("Parent organization not found.");
+            }
+        }
+
         // Upload Logo directly to Cloudinary
         string logoUrl = await _photoService.UploadImageAsync(request.CompanyLogo, cancellationToken);
 
-        // Create Organization with stored Cloudinary Logo CDN URL
+        // Create Organization with stored Cloudinary Logo CDN URL and tenant settings
         var organization = new Organization
         {
             Id = Guid.NewGuid(),
@@ -91,6 +101,8 @@ public class AuthService : IAuthService
             LogoUrl = logoUrl,
             CodePrefix = normalizedPrefix,
             LastEmployeeNumber = 1,
+            RequiresLeave = request.RequiresLeave,
+            ParentOrganizationId = request.ParentOrganizationId,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -143,7 +155,8 @@ public class AuthService : IAuthService
             Role = hrAdmin.Role,
             Token = token,
             RefreshToken = refreshToken,
-            Expiration = DateTime.UtcNow.AddMinutes(30)
+            Expiration = DateTime.UtcNow.AddMinutes(30),
+            RequiresLeave = organization.RequiresLeave
         }, "Organization registered successfully.");
     }
 
@@ -194,6 +207,13 @@ public class AuthService : IAuthService
         _userRepository.Update(createdUser);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+        bool requiresLeave = true;
+        if (createdUser.OrganizationId.HasValue)
+        {
+            var org = await _organizationRepository.GetByIdAsync(createdUser.OrganizationId.Value, cancellationToken);
+            if (org != null) requiresLeave = org.RequiresLeave;
+        }
+
         return ApiResponse<AuthResponseDto>.SuccessResponse(new AuthResponseDto
         {
             UserId = createdUser.Id,
@@ -204,7 +224,8 @@ public class AuthService : IAuthService
             Role = createdUser.Role,
             Token = token,
             RefreshToken = refreshToken,
-            Expiration = DateTime.UtcNow.AddMinutes(30)
+            Expiration = DateTime.UtcNow.AddMinutes(30),
+            RequiresLeave = requiresLeave
         }, "Registration successful.");
     }
 
@@ -231,6 +252,13 @@ public class AuthService : IAuthService
         _userRepository.Update(user);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+        bool requiresLeave = true;
+        if (user.OrganizationId.HasValue)
+        {
+            var org = await _organizationRepository.GetByIdAsync(user.OrganizationId.Value, cancellationToken);
+            if (org != null) requiresLeave = org.RequiresLeave;
+        }
+
         return ApiResponse<AuthResponseDto>.SuccessResponse(new AuthResponseDto
         {
             UserId = user.Id,
@@ -241,7 +269,8 @@ public class AuthService : IAuthService
             Role = user.Role,
             Token = token,
             RefreshToken = refreshToken,
-            Expiration = DateTime.UtcNow.AddMinutes(30)
+            Expiration = DateTime.UtcNow.AddMinutes(30),
+            RequiresLeave = requiresLeave
         }, "Login successful.");
     }
 
@@ -266,6 +295,13 @@ public class AuthService : IAuthService
         _userRepository.Update(user);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+        bool requiresLeave = true;
+        if (user.OrganizationId.HasValue)
+        {
+            var org = await _organizationRepository.GetByIdAsync(user.OrganizationId.Value, cancellationToken);
+            if (org != null) requiresLeave = org.RequiresLeave;
+        }
+
         return ApiResponse<AuthResponseDto>.SuccessResponse(new AuthResponseDto
         {
             UserId = user.Id,
@@ -276,7 +312,8 @@ public class AuthService : IAuthService
             Role = user.Role,
             Token = newAccessToken,
             RefreshToken = newRefreshToken,
-            Expiration = DateTime.UtcNow.AddMinutes(30)
+            Expiration = DateTime.UtcNow.AddMinutes(30),
+            RequiresLeave = requiresLeave
         }, "Token refreshed successfully.");
     }
 
