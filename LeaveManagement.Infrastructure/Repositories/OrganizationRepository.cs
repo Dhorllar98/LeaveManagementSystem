@@ -23,4 +23,12 @@ public class OrganizationRepository : IOrganizationRepository
     {
         await _context.Organizations.AddAsync(organization, cancellationToken);
     }
+
+    public async Task<Organization?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await _context.Organizations
+            .Include(o => o.SubOrganizations)
+            .Include(o => o.ParentOrganization)
+            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+    }
 }

@@ -17,6 +17,14 @@ public class Organization
 
     public int DefaultAnnualLeaveDays { get; set; } = 20; // Default leave balance for employees in this organization as test
 
+    // Tenant-level feature flag
+    public bool RequiresLeave { get; set; } = true;
+
+    // Hierarchical Tenant Support (Parent / Sub-organizations)
+    public Guid? ParentOrganizationId { get; set; }
+    public Organization? ParentOrganization { get; set; }
+    public ICollection<Organization> SubOrganizations { get; set; } = new List<Organization>();
+
     [Timestamp]
     public byte[]? RowVersion { get; set; }
 

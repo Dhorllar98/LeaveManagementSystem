@@ -18,5 +18,9 @@ public record RegisterOrganizationDto(
     string Password,
 
     // System Preferences
-    string CodePrefix
+    string CodePrefix,
+
+    // Tenant-Level Configuration & Hierarchy
+    bool RequiresLeave = true,
+    Guid? ParentOrganizationId = null
 );
